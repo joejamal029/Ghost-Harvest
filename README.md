@@ -40,7 +40,8 @@ Ghost Harvest/
     ├── utils.py                     # Admin detection, UAC elevation, file hashing
     │
     └── tests/
-        └── validate_security.py     # 37-assertion security regression suite
+        ├── __init__.py              # Tests package descriptor
+        └── validate_security.py     # 41-assertion security regression suite
 ```
 
 ---
@@ -89,8 +90,8 @@ Each source folder is processed through this sequential pipeline on a daemon thr
 │      Deletes every flagged file where action == "purge"              │
 │                                                                      │
 │  ④  SHA-256 VERIFY  (hasher.ParallelHashVerifier)                    │
-│      ThreadPoolExecutor walks dest, hashes each file, compares src   │
-│      Reports: ok / mismatch / source-only                            │
+│      ThreadPoolExecutor walks dest/src, hashes, and compares copies  │
+│      Reports: ok / mismatch / missing from destination / destination-only │
 │                                                                      │
 │  ⑤  MANIFEST  (manifest.write_manifest)                              │
 │      Writes _BLOCKED.txt listing every purged + warned file          │
@@ -327,6 +328,24 @@ Malwarebytes), where residual infected or suspicious files may remain.
 | E3 | Preview refresh debounced to 200 ms |
 | E4 | Pre-flight byte parser handles raw values (no suffix) |
 
+### Sprint Fixes (Iteration 4 Hardening)
+
+| ID | Area | Bug / Edge Case | Resolution |
+|----|------|-----------------|------------|
+| BUG-001 | Test Harness | `inspect.getsource(elevate)` fails without source | Wrapped source inspections in `try/except OSError` blocks |
+| BUG-002 | GUI | Background callbacks crashed with `TclError` on closed windows | Guarded all `self.after` UI updates with `if self._alive:` checks |
+| BUG-003 | Scanner | SILENTLY skipped files encountering system PermissionErrors | Re-raised `PermissionError` from scanner magic checks to log warnings |
+| BUG-004 | Logging | Double-read hash failures silently bypassed warnings | Logged a specific alert warning when both source and destination fail to hash |
+| BUG-005 | Parsing | Pre-flight size tokenizer failed on European locales | Built a regex-based parser handling comma/dot counts & digit spacing |
+| BUG-006 | Test Harness | Resolution CWD path mismatch for tests | Located project root via relative `Path(__file__).parent.parent.parent` |
+| BUG-007 | Architecture | Package import inconsistencies for tests | Added an empty `__init__.py` file under `ghost_harvest/tests/` |
+| BUG-008 | Command | Drive-relative destinations (e.g. `C:folder`) crashed robocopy | Upgraded `_normalize_path` to append backslashes to drive roots |
+| BUG-009 | Security | Circular/nested copies caused endless recursion loops | Hardened circular detection to be bidirectionally restrictive |
+| BUG-010 | Hasher | Dropped files on source were completely ignored during verify | Overhauled verification to walk both destination and source (two-pass verify) |
+| BUG-011 | Command | Space-containing exclusions parsed naively as separate items | Leveraged `shlex.split` for robust custom command argument parsing |
+| BUG-012 | GUI | Pre-flight callback tasks crashed on window close | Protected preflight setup and cancellation routines with `self._alive` guards |
+| BUG-013 | Process Sync | Subprocesses continued running in background after abort | Implemented mutex locks and dynamic process killing (`self.process.kill()`) |
+
 ---
 
 ## Extending the Tool
@@ -383,7 +402,7 @@ Expected output:
   GhostHarvest v2.1 — Security Validation
 ========================================================
   ...
-  37 passed · 0 failed
+  41 passed · 0 failed
 ========================================================
 ```
 
