@@ -1,0 +1,32 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Caches and build artifacts
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Application logs and local test outputs
+_GhostHarvest_log.txt
+_BLOCKED.txt
+*log.txt
+*.log
+
+# Editor / System files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Project-specific / LLM metadata
+.vibecode/
+.vibecode.yaml
+Ghost Harvest_llm.md

@@ -1,0 +1,197 @@
+**SPRINT_FIX.md has been created.** It is now available in the working directory for download/review.
+
+```markdown
+# SPRINT_FIX.md — Ghost Harvest
+
+**Audit Date:** 2026-05-30  
+**Auditor:** Grok (code-audit-sprint)  
+**Target:** Autonomous Agent Implementation Sprint / Hardening Pass  
+**Base Ref:** README.md + inline architecture documentation
+
+---
+
+## HOW TO USE THIS FILE
+
+Severity tags dictate priority. Apply fixes **exactly** as written.  
+`SPRINT_FIX.md` overrides any conflicting inline comments where noted.  
+After each Group, run the checkpoint command. Do not proceed until it passes.
+
+---
+
+## PASS 1 — CRITICAL BLOCKERS
+
+### BUG-001 [BLOCKER] — `_parse_robocopy_bytes` not reachable from pre-flight thread
+**File:** `ghost_harvest/app.py`  
+**What's wrong:** `_thread_preflight` calls `self._parse_robocopy_bytes` but the method is defined as `@staticmethod` *after* the call site in the class body (and the thread does not have access to the bound method anyway). This raises `AttributeError` on pre-flight.  
+**Fix:** Move the staticmethod to the top of the `GhostHarvest` class (right after `_update_space`) and ensure it's called as `GhostHarvest._parse_robocopy_bytes(...)`.
+
+```python
+# Insert near top of GhostHarvest class (after _update_space)
+    @staticmethod
+    def _parse_robocopy_bytes(line: str) -> int:
+        """
+        Parse a robocopy summary 'Bytes' line...
+        """
+        # (keep the entire existing implementation unchanged)
+```
+
+### BUG-002 [BLOCKER] — Missing import for `format_size` in `_thread_preflight`
+**File:** `ghost_harvest/app.py`  
+**What's wrong:** `from .utils import format_size` is used but the import is missing at the top of the file.  
+**Fix:** Add to the existing imports:
+
+```python
+from .utils import strip_ansi, format_size
+```
+
+### BUG-003 [BLOCKER] — `scan_plain` not passed to scanner in pipeline
+**File:** `ghost_harvest/app.py`  
+**What's wrong:** In `_pipeline`, the scanner is instantiated with `scan_plain=settings["scan_plain"]` — but the `PostCopyScanner.__init__` signature in the provided snapshot does **not** accept `scan_plain` (it is a recent addition that was not propagated to the class).  
+**Fix:** Update the scanner init in `_pipeline`:
+
+```python
+scanner = PostCopyScanner(
+    blocked_exts=blocked_exts_set,
+    skip_dirs=skip_dirs_set,
+    zip_doc_exts=ZIP_DOC_EXTS,
+    ole_doc_exts=OLE_DOC_EXTS,
+    scan_plain=settings.get("scan_plain", True),  # safe default
+)
+```
+
+And update `scanner.py` `__init__` to accept and store it (see PASS 2).
+
+---
+
+## PASS 2 — HIGH SEVERITY TEST BUGS
+
+### BUG-004 [HIGH] — `PostCopyScanner` constructor mismatch with tests / pipeline
+**File:** `ghost_harvest/scanner.py`  
+**What's wrong:** `__init__` does not accept `scan_plain` parameter (used in app.py and expected by test suite).  
+**Fix:** Update `__init__`:
+
+```python
+def __init__(
+    self,
+    blocked_exts: set[str],
+    skip_dirs: set[str] | None = None,
+    zip_doc_exts: set[str] | None = None,
+    ole_doc_exts: set[str] | None = None,
+    scan_plain: bool = True,
+) -> None:
+    ...
+    self.scan_plain = scan_plain
+```
+
+### BUG-005 [HIGH] — `has_double_extension` test expects `removeprefix` but uses `lstrip`
+**File:** `ghost_harvest/scanner.py` (and tests)  
+**What's wrong:** Comment claims S2 fix (`removeprefix`) but code still uses `.lstrip(".")`. Tests will fail for edge cases.  
+**Fix:** Replace in `has_double_extension`:
+
+```python
+final_ext = suffixes[-1].lower().removeprefix(".").removeprefix("*")
+```
+
+(Also update the comment to confirm the fix.)
+
+### BUG-006 [HIGH] — Missing `ROBOCOPY_SUCCESS_CODES` import in app.py pipeline
+**File:** `ghost_harvest/app.py`  
+**What's wrong:** Used in `_pipeline` but not imported.  
+**Fix:** Add to imports:
+
+```python
+from .constants import BLOAT_DIRS, DANGEROUS_EXTS, ZIP_DOC_EXTS, OLE_DOC_EXTS, ROBOCOPY_SUCCESS_CODES
+```
+
+---
+
+## PASS 3 — MEDIUM SEVERITY (Silent Failures / Latent Issues)
+
+### BUG-007 [MEDIUM] — Hardcoded Windows paths + no cross-platform guard in some places
+**File:** `ghost_harvest/app.py`, `main.py`  
+**What's wrong:** Several `\\` assumptions and `sys.platform` checks exist, but `_browse_dest` and queue handling do not normalize consistently. On non-Windows it will still attempt to run.  
+**Fix:** In `_browse_dest` and `_q_add`:
+
+```python
+p = p.replace("/", "\\") if sys.platform == "win32" else p
+```
+
+Reinforce top-level guard in `main.py`.
+
+### BUG-008 [MEDIUM] — `build_display_cmd` double-escapes quotes incorrectly
+**File:** `ghost_harvest/command.py`  
+**What's wrong:** `a = a.replace('"', r'"')` does nothing useful (raw string literal). Should escape for display.  
+**Fix:**
+
+```python
+if '"' in a:
+    a = a.replace('"', '\\"')
+```
+
+### BUG-009 [MEDIUM] — No handling for abort during SHA-256 verification
+**File:** `ghost_harvest/app.py` + `hasher.py`  
+**What's wrong:** `_pipeline` checks abort before scan/hash but `ParallelHashVerifier.verify` has no early-exit path. Long-running verify can continue after stop.  
+**Fix:** Pass `abort_event` to verifier and check inside the worker loop (simple `if self.abort_event.is_set(): return`).
+
+### BUG-010 [MEDIUM] — `strip_ansi` called on every line but not on pre-flight summary
+**File:** `ghost_harvest/app.py`  
+**What's wrong:** Minor log pollution.  
+**Fix:** Wrap summary_text with `strip_ansi` before logging.
+
+---
+
+## PASS 4 — ENVIRONMENT & STRUCTURAL
+
+### BUG-011 [MEDIUM] — `vibe_snapshot_env.txt` and test file reference non-existent paths
+**File:** Project root + `validate_security.py`  
+**What's wrong:** Snapshot mentions files that don't exist in the provided structure (e.g., old `GhostHarvest.py`). Tests assume certain imports.  
+**Fix:** Update test imports to current package structure. Remove stale references in README if any.
+
+### BUG-012 [MEDIUM] — Thread safety: GUI updates from hasher/scanner callbacks
+**File:** `ghost_harvest/app.py`  
+**What's wrong:** Callbacks already use `self.after(0, ...)`, which is correct, but no protection against late callbacks after window close.  
+**Fix:** Add a `self._alive = True` flag and guard in `_log` / `_set_status`.
+
+---
+
+## EXECUTION ORDER FOR AGENT
+
+**Group 1 — Blockers (must run first)**
+1. BUG-001
+2. BUG-002
+3. BUG-003
+4. BUG-006
+
+**Checkpoint:** `python -m pytest ghost_harvest/tests/validate_security.py -q --tb=no` (or direct `python ghost_harvest/tests/validate_security.py`)
+
+**Group 2 — Test & Scanner Fixes**
+1. BUG-004
+2. BUG-005
+
+**Checkpoint:** Same as above + manual pre-flight test.
+
+**Group 3 — Medium Hardening**
+1. BUG-007
+2. BUG-008
+3. BUG-009
+4. BUG-010
+5. BUG-011
+6. BUG-012
+
+**Checkpoint:** `python -m ghost_harvest.tests.validate_security` + full GUI smoke test (add sources, pre-flight, dry-run).
+
+**Final checkpoint:** Full migration dry-run succeeds with clean logs, 37/37 test assertions pass, no AttributeErrors or unhandled exceptions.
+
+---
+
+## KNOWN STUBS (not bugs — expected)
+
+- Full ADS (Alternate Data Stream) enumeration (mentioned in Threat Model as future).
+- Entropy analysis for encrypted payloads.
+- Cross-platform support beyond Windows.
+- More magic signatures / heuristic improvements.
+
+---
+```
+
+**Phase 2 (Agent Initiation Prompt) ready on request.** Let me know if you want the full autonomous agent hand-off prompt now, or if you'd like me to apply any of these fixes directly.
