@@ -1,115 +1,192 @@
-# 📖 GhostHarvest v2.1 — Practical Usage & Test Guide
+# 👻 GhostHarvest v2.1 — Complete User Manual & Practical Testing Guide
 
-This guide provides a step-by-step walkthrough to safely test and run **GhostHarvest v2.1** in a sandboxed environment on your PC. You do not need to risk connecting an actual infected drive to test the security boundaries, scanners, and verifiers.
-
----
-
-## 🛠️ Step 1: Set Up a Safe Mock Sandbox
-
-We will create a dummy "infected" source folder containing both safe files and mock malicious payloads to see exactly how GhostHarvest sanitizes and protects your system.
-
-### 1. Create the Test Folders
-Create two new empty folders on your Desktop (or anywhere in your user space):
-* `C:\Users\USER\Desktop\Ghost_Source` (Our mock "infected" drive)
-* `C:\Users\USER\Desktop\Ghost_Destination` (Our clean recovery location)
-
-### 2. Populate the Mock "Infected" Source
-Inside your `Ghost_Source` folder, create the following test files:
-
-* **File 1: A Safe Document**
-  * Name: `my_document.txt`
-  * Content: `This is a completely safe plain text file containing recipes.`
-
-* **File 2: Double-Extension Attack (Will be purged)**
-  * Name: `tax_invoice.pdf.exe`
-  * Content: *(Any dummy text)*
-  * *Why:* GhostHarvest flags double extensions containing hazardous trailing formats.
-
-* **File 3: Renamed Executable Magic-Byte Attack (Will be purged)**
-  * Name: `image.png`
-  * Content: Start the file with the executable magic bytes `MZ` (hex `4D 5A`). You can create this by writing `MZ - This is actually a disguised program!` inside it.
-  * *Why:* The magic-byte scanner reads the first 16 bytes of all copied files, identifying header mismatches even if renamed.
-
-* **File 4: Legitimate ZIP/Office Document (Will be warned, not purged)**
-  * Name: `presentation.pptx`
-  * Content: Start the file with standard ZIP magic bytes `PK` (hex `50 4B 03 04`).
-  * *Why:* The zip document allowlist identifies this as a valid zip-container file format, triggering a `warn` warning rather than a delete purge.
-
-* **File 5: Excluded Bloat Directory (Will be skipped)**
-  * Create a subfolder inside `Ghost_Source` named `$Recycle.Bin`.
-  * Add a dummy file `deleted_malware.exe` inside it.
-  * *Why:* GhostHarvest automatically excludes systemic bloat folders during the initial Robocopy pass.
+This guide is a comprehensive reference manual for **GhostHarvest v2.1**. It explains the technical purpose, security implications, and argument mapping of every GUI option, slider, toggle, and command preview, followed by a step-by-step sandboxed tutorial to test them.
 
 ---
 
-## 🚀 Step 2: Start the Application
+## 🖥️ 1. Interface & Controls Reference
 
-### 1. Disable AutoPlay (Windows Native Protection)
-Before interacting with any potentially hazardous drive, disable AutoPlay globally to prevent Windows from auto-running scripts on plugin:
-1. Open **Settings** (`Win + I`).
-2. Search for **AutoPlay settings**.
-3. Toggle **Use AutoPlay for all media and devices** to **Off**.
+GhostHarvest's interface is divided into functional zones designed to construct a secure, zero-trust migration pipeline.
 
-### 2. Launch GhostHarvest
-Open PowerShell or Command Prompt as an administrator and run:
-
-```powershell
-cd "C:\Users\USER\Desktop\APPS\Ghost Harvest"
-python main.py
+```
+┌────────────────────────────────────────────────────────┐
+│ 1. SOURCE QUEUE                                        │
+├────────────────────────────────────────────────────────┤
+│ 2. DESTINATION SELECTION & PATH VALIDATION             │
+├────────────────────────────────────────────────────────┤
+│ 3. FILTERS (EXCLUSIONS & PATTERNS)                     │
+├────────────────────────────────────────────────────────┤
+│ 4. PERFORMANCE & PIPELINE SETTINGS                     │
+├────────────────────────────────────────────────────────┤
+│ 5. COMMAND PREVIEW & SYSTEM CONTROLS                   │
+└────────────────────────────────────────────────────────┘
 ```
 
-*Note: If you run it normally, the application will trigger a secure Windows User Account Control (UAC) dialog to auto-elevate itself. This elevation is native and necessary to grant Robocopy the `SeBackupPrivilege` privileges required to bypass damaged file permissions.*
+---
+
+### Zone 1: Source Queue Management
+
+The **Source Queue** is a list container allowing you to consolidate multiple folders from infected volumes into a single surgical migration batch.
+
+| GUI Control | Action | Security / Technical Purpose |
+|:---|:---|:---|
+| **`+ Add Folder`** | Spawns a system folder selector. | Appends an absolute folder path (e.g. `D:\Photos`) to the migration queue. |
+| **`↑` (Move Up)** | Shifts the selected folder up in the queue list. | Reorders execution sequence (folders copy in top-down order). |
+| **`↓` (Move Down)** | Shifts the selected folder down in the queue list. | Reorders execution sequence. |
+| **`✕` (Remove)** | Deletes the selected folder path from the queue. | Excludes the folder from the current migration batch. |
+
+> [!NOTE]
+> **Path Validation:** The source queue rejects empty entries and duplicate paths to prevent redundant copy processes.
 
 ---
 
-## 🖥️ Step 3: Run the Extraction Test
+### Zone 2: Destination Selection
 
-Once the beautiful dark-themed GUI loads, configure it as follows:
+Sets the target recovery location where your clean, sanitized files will be written.
 
-1. **Source Directory:** Set this to your mock folder: `C:\Users\USER\Desktop\Ghost_Source`
-2. **Destination Directory:** Set this to: `C:\Users\USER\Desktop\Ghost_Destination`
-3. **Execution Settings:**
-   * Make sure **Multi-threaded copy** is set (default is 16).
-   * Leave **Pre-Scan Plain Text** checked (or uncheck to see the performance bypass).
-   * Leave **Exclude System Bloat** checked.
-4. **Click "Pre-Flight Scan"**
-   * Watch the console output. It will execute a safe, instantaneous Robocopy dry run (`/L` mode) to estimate the total size and file counts before writing a single byte.
-
-### 5. Click "Start Migration"
-A confirmation dialog will appear summarizing the security boundaries. Click **Yes** to initiate the surgical extraction.
+* **`Destination:` Text Entry:** Displays the active recovery path (default: `C:\CleanWorkspace`).
+* **`Browse...` Button:** Spawns a folder picker to easily select your destination.
+* **Real-time Path Assertion Label:** Dynamically monitors the path state to prevent critical errors:
+  * ⚠️ *Destination folder does not exist yet:* A warning printed if the folder must be created.
+  * 🛑 *Path errors:* Displays error alerts if the source queue contains paths nesting within the destination, or if the destination is located inside a source directory (bidirectional recursion protection).
 
 ---
 
-## 🔍 Step 4: Verify the Results
+### Zone 3: Filters (Exclusions & Patterns)
 
-After the run finishes, check the logs and your folders to observe the zero-trust sanitization in action:
+Controls what files and directories are allowed to cross the security boundary at the **initial Robocopy level**.
 
-### 1. Inspect the Destination Folder (`Ghost_Destination`)
-Open your recovery directory. You will find:
-* ✅ `my_document.txt` (Safely migrated and verified).
-* ❌ `tax_invoice.pdf.exe` is **completely gone** (Purged and deleted).
-* ❌ `image.png` is **completely gone** (Identified as disguised executable magic bytes, purged and deleted).
-* ⚠️ `presentation.pptx` is **safely retained** (Identified as a valid Office document container, skipped from purging, but logged with a warning).
+#### 1. `Block dangerous executables` Checkbox
+* **Robocopy Mapping:** `/XF` (Exclude Files)
+* **Default Arguments Applied:** Excludes `*.exe`, `*.bat`, `*.cmd`, `*.vbs`, `*.js`, `*.wsf`, `*.scr`, `*.pif`, `*.lnk`, `*.msi`, `*.ps1`, `*.reg`, `*.inf`, `*.com`, `*.hta`, `*.jar`, `*.wsh`, `*.sys`, `*.drv`, `*.ocx`, `*.cpl`, `*.msp`, `*.mst`, `*.application`, `*.gadget`, `*.psc1`, `*.docm`, `*.xlsm`, `*.pptm`, `*.dotm`, `*.xltm`, `*.potm`, `*.chm`, `*.url`, `*.website`
+* **Purpose:** Blocks known executable file types and macro-enabled documents from ever copying to the destination, stopping malware before it reaches your filesystem.
 
-### 2. Read the Manifest File (`_BLOCKED.txt`)
-Inside the root of `Ghost_Destination`, open the generated `_BLOCKED.txt` file. You will see a detailed timestamped audit trail:
-```
-[PURGE] image.png | Reason: Magic signature match (Executable (MZ))
-[PURGE] tax_invoice.pdf.exe | Reason: Double extension (.pdf.exe)
-[WARN]  presentation.pptx | Reason: Magic signature match (ZIP Archive (PK))
-```
+#### 2. `Skip dev bloat + system dirs` Checkbox
+* **Robocopy Mapping:** `/XD` (Exclude Directories)
+* **Default Arguments Applied:** Excludes `node_modules`, `.git`, `node_modules`, `build`, `dist`, `target`, `.gradle`, `.idea`, `.tox`, `.next`, `.nuxt`, `coverage`, `.cache`, `.mypy_cache`, `.pytest_cache`, `$Recycle.Bin`, `"System Volume Information"`, `Recovery`, `Windows.old`
+* **Purpose:** Skips useless developer dependency caches and high-risk Windows system directories (like `$Recycle.Bin` and hidden recycler volumes) where drive-penetration viruses frequently deposit active payloads.
 
-### 3. Read the Log File (`_GhostHarvest_log.txt`)
-A complete CLI log file is written to your destination folder containing every Robocopy output line, ANSI logs, and parallel verification summaries for administrative records.
-
-### 4. Verification Check
-Observe the GUI log panel. You will see the **Parallel SHA-256 Verifier** successfully matched the hash signatures between source and destination copies, confirming zero files were corrupted during transit.
+#### 3. `Extra folder exclusions (space-separated)` Text Field
+* **Robocopy Mapping:** Appends custom arguments to `/XD`
+* **Parsing Engine:** Uses standard `shlex.split` to parse the string.
+* **Purpose:** Allows you to exclude specific folder names. Since it uses `shlex.split`, you can safely input folder names containing spaces by wrapping them in double quotes (e.g. `"My Old Temp Folder" "Trash"`).
 
 ---
 
-## 💡 Future Real-World Runs
-When running this on actual infected external drives:
-1. **Disable AutoPlay** before plugging the drive in.
-2. **Run a full Malwarebytes/Windows Defender scan** on the drive to neutralize active memory boot-payloads.
-3. Launch **GhostHarvest** and point it to the drive letter root (e.g. `E:\`).
-4. Click **Start Migration** and let the surgical extraction pipeline handle the rest safely!
+### Zone 4: Settings & Performance
+
+Toggles the execution parameters of the recovery thread, Robocopy options, and post-copy verification sweeps.
+
+#### 1. `Threads:` Slider
+* **Robocopy Mapping:** `/MT:N` (Multi-threaded copy, range: `1` to `32`)
+* **Verification Mapping:** Sets the worker pool limit inside the parallel `ThreadPoolExecutor` SHA-256 verifier.
+* **Purpose:** Maximizes file-copy throughput on multi-core systems. Set higher for fast SSDs/NVMe drives; set lower (1-4) for mechanical external drives to avoid mechanical head thrashing.
+
+#### 2. `Restartable /ZB` Checkbox
+* **Robocopy Mapping:** `/ZB` (Restartable mode with backup mode fallback)
+* **Purpose:** If a file copy is interrupted mid-transfer (due to drive disconnects), Robocopy can resume from the exact byte offset instead of restarting. If it hits an access-denied permission boundary, it falls back to backup mode using admin credentials (`SeBackupPrivilege`) to force-copy unreadable files.
+
+#### 3. `Dry run` Checkbox
+* **Robocopy Mapping:** `/L` (List only)
+* **Purpose:** When checked, no directories are written, and no files are copied. The tool simulates the migration, allowing you to preview exactly what files *would* be transferred, which filters would trigger, and what size is expected.
+
+#### 4. `Magic byte scan` Checkbox
+* **Scanner Mapping:** `scanner.PostCopyScanner`
+* **Purpose:** Triggers a post-copy deep scan of the destination filesystem. It reads the first 16 bytes of every copied file and compares it against 16 distinct executable magic signatures (such as PE headers `MZ`, zip archives `PK`, cabinet files, and script shebangs). Disguised executables (e.g., a `.exe` renamed to `.png`) are automatically identified and purged.
+
+#### 5. `Scan plain-text` Checkbox
+* **Scanner Mapping:** Skip plain-text matching (`constants.PLAIN_TEXT_EXTS`)
+* **Purpose:** Instructs the magic-byte scanner to skip checking known plain-text extensions (like `.txt`, `.py`, `.csv`, `.md`, `.css`, `.json`). Leave checked for absolute security; uncheck to significantly boost scanning performance on directories containing thousands of code or text files.
+
+#### 6. `SHA-256 verify` Checkbox
+* **Verifier Mapping:** `hasher.ParallelHashVerifier`
+* **Purpose:** Runs a multi-threaded parallel SHA-256 check. It performs a **two-pass walk**:
+  1. *First Pass:* Hashes copied files in the destination and compares them against their source counterpart to ensure zero corruption or transit alteration.
+  2. *Second Pass:* Walks the source directory (excluding blocked folders) to verify if any files were missed entirely during copy, reporting them as `"missing from destination"`.
+
+#### 7. `Save log` Checkbox
+* **Logging Mapping:** Dynamic stream redirect to `_GhostHarvest_log.txt`
+* **Purpose:** Streams the entire execution session—including the original Robocopy console logs, scan block lists, and hash verifications—into a persistent log file in the root of the destination directory.
+
+---
+
+### Zone 5: Command Preview & Control Panel
+
+* **Command Preview Box:** Displays the exact command-line string that is passed to the OS in real-time.
+  * **Security Note:** The preview quotes paths for readability, but the backend passes argument lists directly via `subprocess.Popen(args, shell=False)` to prevent argument injection.
+* **`Refresh` Button:** Manually forces a refresh and redraw of the command preview box.
+* **`Copy` Button:** Copies the active command preview string to your clipboard for manual execution.
+* **`Pre-flight` Button:** Spawns a background thread to run an instantaneous dry-run analysis. It scans the source queue to calculate the exact file count and byte footprint of the migration, checking for permission constraints before execution.
+* **`RUN MIGRATION` Button:** Initiates the 6-stage surgical recovery pipeline on a background daemon thread.
+* **Progress Bar & Status Label:** Displays real-time operation status (`Ready.`, `Copying...`, `Scanning...`, `Verifying...`, `Completed.`).
+
+---
+
+## 🧪 2. Sandboxed Sandbox Test Walkthrough
+
+Follow these steps to safely test every single option and security boundary of the GhostHarvest v2.1 pipeline.
+
+### Step 1: Initialize the Mock Environment
+Create two dummy folders on your Windows system:
+* `C:\Ghost_Source` (Our mock infected external drive)
+* `C:\Ghost_Destination` (Our clean target workspace)
+
+Inside `C:\Ghost_Source`, create the following test assets:
+1. **`clean.txt`** (Safe file) -> Write standard text inside.
+2. **`malicious.exe`** (Dangerous executable) -> Create a dummy text file and rename the extension to `.exe`.
+3. **`disguised.jpg`** (Renamed executable magic-byte attack) -> Create a text file, write `MZ - disguised binary payload` as the first characters, and rename the extension to `.jpg`.
+4. **`document.docx`** (Allowlisted office zip container) -> Create a text file, write `PK - valid office container` as the first characters, and rename to `.docx`.
+5. **`invoice.pdf.bat`** (Double extension) -> Create a text file and rename it to `.pdf.bat`.
+6. **`System Volume Information`** (System bloat folder) -> Create a subfolder with this name, and put a dummy file `virus.dll` inside.
+
+---
+
+### Step 2: Test Pre-Flight & Command previews
+1. Open PowerShell/CMD as administrator and launch the tool via the launcher:
+   ```powershell
+   cd "C:\Users\USER\Desktop\APPS\Ghost Harvest"
+   .\launch.bat
+   ```
+2. Click **`+ Add Folder`** and add `C:\Ghost_Source`.
+3. Enter `C:\Ghost_Destination` in the **Destination** text field.
+4. **Observe the Command Preview Box:** Notice how `/XF` lists all dangerous extensions, and `/XD` automatically includes the bloat folder list.
+5. Click **`Pre-flight`**.
+   * *Result:* The status label updates, showing the exact file count (6 files) and total size calculated during the dry run, without writing any data to your C: drive.
+
+---
+
+### Step 3: Run the Surgical Migration
+1. Ensure all settings toggles are checked:
+   * **`Restartable /ZB`**: [ON]
+   * **`Magic byte scan`**: [ON]
+   * **`Scan plain-text`**: [ON]
+   * **`SHA-256 verify`**: [ON]
+   * **`Save log`**: [ON]
+2. Click the green **`RUN MIGRATION`** button.
+3. Review the confirmation summary box and click **Yes**.
+4. Watch the progress bar transition from copying, to magic scanning, to verifying.
+
+---
+
+### Step 4: Analyze the Security Sanitize Results
+
+Open your destination folder `C:\Ghost_Destination` to observe how every zero-trust configuration executed:
+
+#### 1. Filter Check (Robocopy Level)
+* **`clean.txt`** is safely copied.
+* **`document.docx`** is safely copied.
+* ❌ **`malicious.exe`** is **missing** (Blocked at the Robocopy level by `/XF`).
+* ❌ **`invoice.pdf.bat`** is **missing** (Blocked at the Robocopy level by `/XF`).
+* ❌ **`System Volume Information`** is **missing** (Blocked at the Robocopy level by `/XD`).
+
+#### 2. Deep Scanner Check (Magic-Byte Level)
+* ❌ **`disguised.jpg`** was copied by Robocopy (since `.jpg` is not in the blocked extension list), but the **Post-Copy Scanner** analyzed its header, matched the `MZ` executable signature, and **permanently purged (deleted) it** from the destination directory.
+* ⚠️ **`document.docx`** matched the `PK` zip-container magic header. However, the allowlist identified it as an approved office file format, **retaining it** while logging a warning.
+
+#### 3. Verification Report (`_BLOCKED.txt` & `_GhostHarvest_log.txt`)
+* Open `C:\Ghost_Destination\_BLOCKED.txt`. You will see the precise security audit trail:
+  ```
+  [PURGE] C:\Ghost_Destination\disguised.jpg | Reason: Magic signature match (Executable (MZ))
+  [WARN]  C:\Ghost_Destination\document.docx | Reason: Magic signature match (ZIP Archive (PK))
+  ```
+* Open `_GhostHarvest_log.txt` to view the stream log containing the full output.
