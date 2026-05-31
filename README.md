@@ -24,21 +24,45 @@ python main.py          # auto-elevates via UAC
 GhostHarvest was not born in a boardroom or as a theoretical exercise—it was forged out of real-world necessity, survival, and a literal dream.
 
 ### The Geacata Infection
-Years ago, the creator's laptop was compromised by the **Geacata virus**—a stealthy malware family notorious for infecting external media immediately upon connection. Lacking a safe way to extract files without compromising other devices, the infected hard drive sat in isolation for years.
+Years ago, my laptop was compromised by the **Geacata virus**—a stealthy malware family notorious for infecting external media immediately upon connection. Lacking a safe way to extract my files without compromising other devices, I had no choice but to let my infected hard drive sit in isolation for years.
 
-After eventually acquiring a clean computer, the frustration of not being able to safely access years of personal data reached a boiling point. Rather than giving up, the creator dove into deep technical research to understand how Geacata spreads: primarily relying on Windows AutoPlay media auto-runs and naive folder-access triggers. 
+After I eventually got a new, clean PC, the frustration of having years of my personal files trapped on that drive reached a boiling point. I couldn't even load them onto my phone. I decided: *That's it, I'm going to research how this virus really works.* Through deep technical digging, I discovered that Geacata propagates primarily by exploiting Windows' native AutoPlay media auto-runs and naive explorer folder-access triggers.
 
 ### From a Dream to Code
-By disabling AutoPlay and standardizing a highly secure clean environment, the creator managed to isolate the drive safely. However, standard file explorer transfers were still highly unsafe. That is when the creator learned about `robocopy` and paired it with the ultra-fast directory indexing principles of tools like WizTree.
+By disabling AutoPlay and standardizing a highly secure clean environment, I managed to isolate the drive safely. However, standard Windows File Explorer transfers were still far too dangerous because they touch files naively and can trigger hidden scripts. That is when I learned about `robocopy` and paired it with the ultra-fast directory indexing concepts of WizTree to map out my transfer pathways.
 
-The final spark was a **dream**. The creator literally had a dream about building a dedicated software suite that could securely "harvest" files from infected environments. Upon waking up, despite not having formal training in advanced device security, the creator set to work with a singular focus: turning that dream GUI into reality.
+The final spark was a **dream**. I literally had a dream where I built a dedicated software suite that could securely "harvest" files from infected environments. When I woke up, despite knowing nothing about device security at the time, I set to work with a singular focus: bringing that dream GUI into reality.
 
 ### The Evolution to v2.1
-What began as a single-file debug script has trailed off into an enterprise-hardened recovery system. Through rigorous iterations, GhostHarvest evolved to include:
+What began as a single-file debug script that I wrote just to recover my own files has evolved into an enterprise-hardened recovery system. Through rigorous iterations, GhostHarvest evolved to include:
 * **Bidirectional recursion protection** to prevent endless copy loops.
 * **A robust two-pass integrity walk** to verify every copied byte and call out dropped files.
 * **Locale-agnostic regex parsers** to handle different OS settings safely.
 * **A hardened post-copy scanner** checking magic byte signatures and double extensions to keep executables out.
+
+---
+
+## 🛡️ Pre-Flight Defensive Strategy
+
+Before you plug your infected drive in, you should follow this dual-layer defense model:
+
+### 1. Disable AutoPlay (Windows Native Feature)
+AutoPlay is a native Windows feature that automatically executes media or opens drives upon connection. To prevent viruses like Geacata from penetrating your system before you even open GhostHarvest, disable it globally:
+* Press `Win + I` to open **Settings**.
+* Go to **Bluetooth & devices** > **AutoPlay** (or search "AutoPlay settings" in the Start Menu).
+* Toggle **Use AutoPlay for all media and devices** to **Off**.
+
+### 2. Run a First-Line Antivirus Clean
+We strongly recommend running a full scan with a reputable antivirus (like **Malwarebytes** or **Windows Defender**) before running the extraction. 
+
+> [!NOTE]
+> **Does GhostHarvest's design make antivirus scans unnecessary?**
+>
+> While GhostHarvest is extremely secure and built with zero-trust checks (blocking 36 extensions, scanning 16 executable headers, and catching double-extensions), **it operates surgically at the file-transfer level.** It does not scan active system memory, neutralize running rootkits, or disinfect the host OS's kernel. 
+> 
+> Think of a deep antivirus clean as the **shields** that neutralize active payloads, and GhostHarvest as the **surgical corridor** that safely extracts only benign, authenticated documents without letting any residual metadata or double-extension triggers escape.
+
+---
 
 > [!TIP]
 > ### A Message of Reassurance
