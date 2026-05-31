@@ -19,6 +19,35 @@ python main.py          # auto-elevates via UAC
 
 ---
 
+## 📖 The Story Behind GhostHarvest (The Human Element)
+
+GhostHarvest was not born in a boardroom or as a theoretical exercise—it was forged out of real-world necessity, survival, and a literal dream.
+
+### The Geacata Infection
+Years ago, the creator's laptop was compromised by the **Geacata virus**—a stealthy malware family notorious for infecting external media immediately upon connection. Lacking a safe way to extract files without compromising other devices, the infected hard drive sat in isolation for years.
+
+After eventually acquiring a clean computer, the frustration of not being able to safely access years of personal data reached a boiling point. Rather than giving up, the creator dove into deep technical research to understand how Geacata spreads: primarily relying on Windows AutoPlay media auto-runs and naive folder-access triggers. 
+
+### From a Dream to Code
+By disabling AutoPlay and standardizing a highly secure clean environment, the creator managed to isolate the drive safely. However, standard file explorer transfers were still highly unsafe. That is when the creator learned about `robocopy` and paired it with the ultra-fast directory indexing principles of tools like WizTree.
+
+The final spark was a **dream**. The creator literally had a dream about building a dedicated software suite that could securely "harvest" files from infected environments. Upon waking up, despite not having formal training in advanced device security, the creator set to work with a singular focus: turning that dream GUI into reality.
+
+### The Evolution to v2.1
+What began as a single-file debug script has trailed off into an enterprise-hardened recovery system. Through rigorous iterations, GhostHarvest evolved to include:
+* **Bidirectional recursion protection** to prevent endless copy loops.
+* **A robust two-pass integrity walk** to verify every copied byte and call out dropped files.
+* **Locale-agnostic regex parsers** to handle different OS settings safely.
+* **A hardened post-copy scanner** checking magic byte signatures and double extensions to keep executables out.
+
+> [!TIP]
+> ### A Message of Reassurance
+> If you are holding an old, compromised drive full of years of photos, code, or personal memories, and you are terrified to plug it in: **there is really nothing to worry about.** 
+>
+> GhostHarvest is built on top of rock-solid file-transfer technology that has existed and been trusted for decades, fortified by our custom, modern security authentications and multi-stage verifications.
+
+---
+
 ## Project Layout
 
 ```
@@ -293,58 +322,6 @@ Malwarebytes), where residual infected or suspicious files may remain.
   enhancement: enumerate streams via `FindFirstStreamW`.
 - **Steganographic payloads** — e.g. Gatak/Stegoloader hiding code in PNG pixels.
   Requires specialised analysis beyond header scanning.
-
----
-
-## Security Audit Trail (v2 → v2.1)
-
-| ID | Severity | Issue | Fix applied |
-|----|----------|-------|-------------|
-| S1 | 🔴 Critical | `shell=True` + user paths = command injection | `shell=False` with `list[str]` args |
-| S2 | 🔴 Critical | `lstrip("*.")` strips wrong chars (`*.wsf` → `""`) | `removeprefix("*.")` |
-| S3 | 🟠 High | `" ".join(sys.argv)` in UAC = argument injection | Pass only `sys.argv[0]`, quoted |
-| S4 | 🟠 High | No symlink/junction protection | `/XJ` flag + `Path.resolve()` |
-| S5 | 🟡 Medium | Bare `except:` swallows security-relevant errors | `OSError` / `PermissionError` + logging |
-| S6 | 🟡 Medium | Missing `.dll`, `.sys`, `.cpl`, `.chm`, macros | 20 → 36 blocked extensions |
-| S7 | 🟡 Medium | Only 5 magic signatures | 5 → 16 (CAB, OLE, ZIP, RAR, 7z, CHM, SWF, LNK, shebang) |
-
-### Hardening enhancements
-
-| ID | Enhancement |
-|----|-------------|
-| H1 | `$Recycle.Bin`, `System Volume Information`, `Recovery`, `Windows.old` auto-excluded |
-| H2 | Double-extension detection (`report.pdf.exe` → purge) |
-| H3 | ZIP/OLE document allowlist (`.docx` flagged as warn, not purge) |
-| H4 | `/XJ` junction-point exclusion |
-| H5 | 34 → 65 plain-text extensions (faster scanning) |
-| H6 | Security summary stats printed after every migration |
-
-### Efficiency improvements
-
-| ID | Improvement |
-|----|-------------|
-| E1 | SHA-256 verify parallelised with `ThreadPoolExecutor` |
-| E2 | Magic scan moved to post-copy (destination only, not infected source twice) |
-| E3 | Preview refresh debounced to 200 ms |
-| E4 | Pre-flight byte parser handles raw values (no suffix) |
-
-### Sprint Fixes (Iteration 4 Hardening)
-
-| ID | Area | Bug / Edge Case | Resolution |
-|----|------|-----------------|------------|
-| BUG-001 | Test Harness | `inspect.getsource(elevate)` fails without source | Wrapped source inspections in `try/except OSError` blocks |
-| BUG-002 | GUI | Background callbacks crashed with `TclError` on closed windows | Guarded all `self.after` UI updates with `if self._alive:` checks |
-| BUG-003 | Scanner | SILENTLY skipped files encountering system PermissionErrors | Re-raised `PermissionError` from scanner magic checks to log warnings |
-| BUG-004 | Logging | Double-read hash failures silently bypassed warnings | Logged a specific alert warning when both source and destination fail to hash |
-| BUG-005 | Parsing | Pre-flight size tokenizer failed on European locales | Built a regex-based parser handling comma/dot counts & digit spacing |
-| BUG-006 | Test Harness | Resolution CWD path mismatch for tests | Located project root via relative `Path(__file__).parent.parent.parent` |
-| BUG-007 | Architecture | Package import inconsistencies for tests | Added an empty `__init__.py` file under `ghost_harvest/tests/` |
-| BUG-008 | Command | Drive-relative destinations (e.g. `C:folder`) crashed robocopy | Upgraded `_normalize_path` to append backslashes to drive roots |
-| BUG-009 | Security | Circular/nested copies caused endless recursion loops | Hardened circular detection to be bidirectionally restrictive |
-| BUG-010 | Hasher | Dropped files on source were completely ignored during verify | Overhauled verification to walk both destination and source (two-pass verify) |
-| BUG-011 | Command | Space-containing exclusions parsed naively as separate items | Leveraged `shlex.split` for robust custom command argument parsing |
-| BUG-012 | GUI | Pre-flight callback tasks crashed on window close | Protected preflight setup and cancellation routines with `self._alive` guards |
-| BUG-013 | Process Sync | Subprocesses continued running in background after abort | Implemented mutex locks and dynamic process killing (`self.process.kill()`) |
 
 ---
 
