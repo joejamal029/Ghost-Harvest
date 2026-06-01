@@ -96,7 +96,22 @@ class GhostHarvest(tk.Tk):
         qh = ttk.Frame(root)
         qh.pack(fill="x", pady=(0, 4))
         ttk.Label(qh, text="Source Queue", style="H2.TLabel").pack(side="left")
-        ttk.Button(qh, text="+ Add Folder", command=self._q_add).pack(side="right")
+
+        # Direct-typing input controls (prevents direct interaction of file explorer with infected drives)
+        add_frame = ttk.Frame(qh)
+        add_frame.pack(side="right")
+
+        self.src_entry_var = tk.StringVar()
+        self.src_entry = ttk.Entry(add_frame, textvariable=self.src_entry_var, width=32, font=("Consolas", 10))
+        self.src_entry.pack(side="left", padx=(0, 6), ipady=3)
+        self.src_entry_var.set("Type folder path directly...")
+
+        self.src_entry.bind("<FocusIn>", lambda _: self._clear_src_placeholder())
+        self.src_entry.bind("<FocusOut>", lambda _: self._add_src_placeholder())
+        self.src_entry.bind("<Return>", lambda _: self._q_add_typed())
+
+        ttk.Button(add_frame, text="+ Add Typed Path", command=self._q_add_typed).pack(side="left", padx=(0, 6))
+        ttk.Button(add_frame, text="Browse…", command=self._q_add).pack(side="left")
 
         qb = ttk.Frame(root)
         qb.pack(fill="x")
@@ -291,6 +306,26 @@ class GhostHarvest(tk.Tk):
     # ══════════════════════════════════════════════════════════════════
     # QUEUE MANAGEMENT
     # ══════════════════════════════════════════════════════════════════
+
+    def _clear_src_placeholder(self) -> None:
+        if self.src_entry_var.get() == "Type folder path directly...":
+            self.src_entry_var.set("")
+
+    def _add_src_placeholder(self) -> None:
+        if not self.src_entry_var.get().strip():
+            self.src_entry_var.set("Type folder path directly...")
+
+    def _q_add_typed(self) -> None:
+        p = self.src_entry_var.get().strip()
+        if p and p != "Type folder path directly...":
+            p = p.replace("/", "\\")
+            if p not in self.queue:
+                self.queue.append(p)
+                self.q_lb.insert("end", p)
+                self._refresh_preview()
+            self.src_entry_var.set("")
+            self._add_src_placeholder()
+            self.focus_set()
 
     def _q_add(self) -> None:
         p = filedialog.askdirectory(title="Add Source Folder to Queue")
