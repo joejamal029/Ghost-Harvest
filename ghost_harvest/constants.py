@@ -116,6 +116,7 @@ ZIP_DOC_EXTS: set[str] = {
     ".epub",
     ".dotx", ".xltx", ".potx",
     ".cbz",
+    ".zip",
 }
 
 # ── OLE document allowlist ─────────────────────────────────────────────────────
