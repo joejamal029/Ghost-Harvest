@@ -26,13 +26,15 @@ GhostHarvest's interface is divided into functional zones designed to construct 
 
 ### Zone 1: Source Queue Management
 
-The **Source Queue** is a list container allowing you to consolidate multiple folders from infected volumes into a single surgical migration batch.
+The **Source Queue** allows you to consolidate multiple source folders into a single surgical migration batch. To ensure maximum device security, you can type paths directly to avoid system file dialogs.
 
 | GUI Control | Action | Security / Technical Purpose |
 |:---|:---|:---|
-| **`+ Add Folder`** | Spawns a system folder selector. | Appends an absolute folder path (e.g. `D:\Photos`) to the migration queue. |
-| **`↑` (Move Up)** | Shifts the selected folder up in the queue list. | Reorders execution sequence (folders copy in top-down order). |
-| **`↓` (Move Down)** | Shifts the selected folder down in the queue list. | Reorders execution sequence. |
+| **`Type folder path directly...`** | Direct text input field. | Allows typing or pasting absolute source paths manually (e.g. `E:\InfectedFolder`) to completely bypass file explorer shell interaction. |
+| **`+ Add Typed Path`** | Appends the manually typed path. | Adds the typed text path to the list queue with zero drive communication. |
+| **`Browse…`** | Spawns a native directory selector. | Convenient directory browser. Use **only** for trusted/clean local paths. |
+| **`↑` (Move Up)** | Shifts the selected folder up in the queue. | Reorders execution sequence (folders copy in top-down order). |
+| **`↓` (Move Down)** | Shifts the selected folder down in the queue. | Reorders execution sequence. |
 | **`✕` (Remove)** | Deletes the selected folder path from the queue. | Excludes the folder from the current migration batch. |
 
 > [!NOTE]
@@ -147,7 +149,8 @@ Inside `C:\Ghost_Source`, create the following test assets:
    cd "C:\Users\USER\Desktop\APPS\Ghost Harvest"
    .\launch.bat
    ```
-2. Click **`+ Add Folder`** and add `C:\Ghost_Source`.
+2. **Type the Source Path:** Type `C:\Ghost_Source` directly into the path entry field (`Type folder path directly...`) and click **`+ Add Typed Path`** (or press Enter).
+   * *Security Note:* This inserts the path with zero file explorer filesystem interaction, making it completely safe for infected drives.
 3. Enter `C:\Ghost_Destination` in the **Destination** text field.
 4. **Observe the Command Preview Box:** Notice how `/XF` lists all dangerous extensions, and `/XD` automatically includes the bloat folder list.
 5. Click **`Pre-flight`**.
