@@ -146,7 +146,7 @@ Inside `C:\Ghost_Source`, create the following test assets:
 ### Step 2: Test Pre-Flight & Command previews
 1. Open PowerShell/CMD as administrator and launch the tool via the launcher:
    ```powershell
-   cd "C:\Users\USER\Desktop\APPS\Ghost Harvest"
+   cd "path\to\Ghost-Harvest"
    .\launch.bat
    ```
 2. **Type the Source Path:** Type `C:\Ghost_Source` directly into the path entry field (`Type folder path directly...`) and click **`+ Add Typed Path`** (or press Enter).

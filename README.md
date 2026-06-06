@@ -10,7 +10,7 @@ Wraps `robocopy` in a tkinter GUI with post-copy magic-byte scanning, parallel S
 ## Quick Start
 
 ```powershell
-cd "C:\Users\USER\Desktop\APPS\Ghost Harvest"
+cd "path\to\Ghost-Harvest"
 python main.py          # auto-elevates via UAC
 ```
 
