@@ -5,6 +5,8 @@
 
 Wraps `robocopy` in a tkinter GUI with post-copy magic-byte scanning, parallel SHA-256 integrity verification, double-extension detection, and a full blocked-file audit manifest. Zero external dependencies — Python 3.9+ stdlib only.
 
+![GhostHarvest Homepage](docs/screenshots/GhostHarvest%20Homepage.png)
+
 ---
 
 ## Quick Start
