@@ -15,6 +15,7 @@ from ghost_harvest.command import build_args
 from ghost_harvest.constants import DANGEROUS_EXTS, EXEC_SIGS
 from ghost_harvest.utils import elevate
 from ghost_harvest.scanner import has_double_extension
+from ghost_harvest.rules import RulesConfig, normalize_ext
 from pathlib import Path
 
 passed = 0
@@ -108,6 +109,25 @@ check("Parse suffix 'm' (12,345,678 m)", parse("Bytes : 12,345,678 m") == 123456
 check("Parse suffix 'k' and decimal dot (12,345.6 k)", parse("Bytes : 12,345.6 k") == int(12345.6 * 1024))
 check("Parse suffix 'm' and decimal comma (12,3 m)", parse("Bytes : 12,3 m") == int(12.3 * 1024**2))
 check("Parse simple raw digits (12345678)", parse("Bytes : 12345678") == 12345678)
+
+# S8: RulesConfig Dynamic Overrides
+print("\n[S8] RulesConfig Dynamic Overrides")
+rules = RulesConfig(allowed_exts={".zip", ".py"}, extra_blocked_exts={".iso"}, extra_blocked_dirs={"custom_build"})
+eff_xf = rules.get_effective_dangerous_exts()
+check("Allowed extension '.zip' removed from /XF", "*.zip" not in eff_xf)
+check("Extra blocked extension '.iso' added to /XF", "*.iso" in eff_xf)
+eff_xd = rules.get_effective_bloat_dirs()
+check("Extra blocked directory added to /XD", "custom_build" in eff_xd)
+
+# S9: Shebang Script Preservation (ISSUE-014 Fix)
+print("\n[S9] Shebang Script Preservation (ISSUE-014 Fix)")
+scanner = s_mod.PostCopyScanner(blocked_exts=rules.get_effective_blocked_exts_set(), script_doc_exts=rules.get_effective_script_exts())
+check("SAFE_SCRIPT_EXTS includes '.py'", ".py" in scanner.script_doc_exts)
+
+# S10: Extension Normalization
+print("\n[S10] Extension Normalization")
+check("normalize_ext('*.ZIP') -> '.zip'", normalize_ext("*.ZIP") == ".zip")
+check("normalize_ext('exe') -> '.exe'", normalize_ext("exe") == ".exe")
 
 # Summary
 print(f"\n{'=' * 56}")

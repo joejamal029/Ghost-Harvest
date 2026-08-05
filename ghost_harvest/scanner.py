@@ -24,6 +24,7 @@ from .constants import (
     PLAIN_TEXT_EXTS,
     ZIP_DOC_EXTS,
     OLE_DOC_EXTS,
+    SAFE_SCRIPT_EXTS,
     INTERNAL_PREFIX,
 )
 
@@ -92,12 +93,14 @@ class PostCopyScanner:
         skip_dirs: set[str] | None = None,
         zip_doc_exts: set[str] | None = None,
         ole_doc_exts: set[str] | None = None,
+        script_doc_exts: set[str] | None = None,
         scan_plain: bool = True,
     ) -> None:
         self.blocked_exts = blocked_exts
         self.skip_dirs = {d.casefold() for d in (skip_dirs or set())}
         self.zip_doc_exts = zip_doc_exts or ZIP_DOC_EXTS
         self.ole_doc_exts = ole_doc_exts or OLE_DOC_EXTS
+        self.script_doc_exts = script_doc_exts or SAFE_SCRIPT_EXTS
         self.scan_plain = scan_plain
 
     # ------------------------------------------------------------------ #
@@ -180,6 +183,9 @@ class PostCopyScanner:
                 elif label == "OLE Compound File (MSI/DOC)" and ext in self.ole_doc_exts:
                     action = "warn"
                     reason = f"MAGIC_BYTE_WARN — {label} (safe doc ext {ext})"
+                elif label == "Script with Shebang (#!)" and ext in self.script_doc_exts:
+                    action = "warn"
+                    reason = f"MAGIC_BYTE_WARN — {label} (safe script ext {ext})"
 
                 entry = {
                     "path":   str(path),

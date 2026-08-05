@@ -13,6 +13,7 @@ __all__ = [
     "MAGIC_READ_SIZE",
     "ZIP_DOC_EXTS",
     "OLE_DOC_EXTS",
+    "SAFE_SCRIPT_EXTS",
     "INTERNAL_PREFIX",
     "ROBOCOPY_SUCCESS_CODES",
 ]
@@ -124,6 +125,14 @@ ZIP_DOC_EXTS: set[str] = {
 
 OLE_DOC_EXTS: set[str] = {
     ".doc", ".xls", ".ppt", ".msg", ".vsd", ".pub",
+}
+
+# ── Safe script allowlist ──────────────────────────────────────────────────────
+# Extensions where Shebang (#!) headers are expected and benign (e.g. #!/usr/bin/env python).
+# These get a WARNING in the log but are NOT purged from the destination.
+
+SAFE_SCRIPT_EXTS: set[str] = {
+    ".py", ".pyw", ".sh", ".bash", ".pl", ".rb", ".php", ".lua", ".ps1", ".tcl",
 }
 
 # ── GhostHarvest internal file prefixes ────────────────────────────────────────

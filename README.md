@@ -67,10 +67,10 @@ We strongly recommend running a full scan with a reputable antivirus (like **Mal
 ---
 
 > [!TIP]
-> ### A Message of Reassurance
-> If you are holding an old, compromised drive full of years of photos, code, or personal memories, and you are terrified to plug it in: **there is really nothing to worry about.** 
+> ### Security & Reliability Statement
+> When extracting data from legacy compromised drives, security concerns are natural. GhostHarvest mitigates these risks by leveraging standard, highly robust file-transfer primitives that have been trusted in enterprise environments for decades. 
 >
-> GhostHarvest is built on top of rock-solid file-transfer technology that has existed and been trusted for decades, fortified by our custom, modern security authentications and multi-stage verifications.
+> By combining this underlying robustness with strict, automated magic-byte checks, bidirectional recursion protection, and multi-stage verifications, the tool ensures a controlled and secure recovery environment.
 
 ---
 

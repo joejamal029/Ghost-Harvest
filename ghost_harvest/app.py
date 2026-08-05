@@ -19,11 +19,13 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 
 from .command import build_args, build_display_cmd
-from .constants import BLOAT_DIRS, DANGEROUS_EXTS, ZIP_DOC_EXTS, OLE_DOC_EXTS, ROBOCOPY_SUCCESS_CODES
+from .constants import BLOAT_DIRS, DANGEROUS_EXTS, ZIP_DOC_EXTS, OLE_DOC_EXTS, SAFE_SCRIPT_EXTS, ROBOCOPY_SUCCESS_CODES
 from .hasher import ParallelHashVerifier
 from .manifest import write_manifest
 from .utils import strip_ansi, format_size
 from .scanner import PostCopyScanner
+from .rules import RulesConfig
+from .settings_dialog import SettingsDialog
 from .theme import (
     ACCENT, BG, GREEN, MAUVE, RED, SUBTEXT, SURFACE, TEXT, YELLOW,
     apply_theme,
@@ -57,6 +59,7 @@ class GhostHarvest(tk.Tk):
         self.save_log    = tk.BooleanVar(value=True)
 
         # ── Runtime state ─────────────────────────────────────────────
+        self.rules = RulesConfig.load_from_disk()
         self.running = False
         self.abort_event = threading.Event()
         self.process_lock = threading.Lock()
@@ -66,6 +69,7 @@ class GhostHarvest(tk.Tk):
 
         apply_theme(self)
         self._build()
+        self._update_rules_badge()
         self._refresh_preview()
         self._update_space()
 
@@ -147,7 +151,16 @@ class GhostHarvest(tk.Tk):
         ttk.Separator(root).pack(fill="x", pady=12)
 
         # ── Filters ───────────────────────────────────────────────────
-        ttk.Label(root, text="Filters", style="H2.TLabel").pack(anchor="w", pady=(0, 5))
+        flt_hdr = ttk.Frame(root)
+        flt_hdr.pack(fill="x", pady=(0, 5))
+        ttk.Label(flt_hdr, text="Filters", style="H2.TLabel").pack(side="left")
+
+        self.rules_badge_lbl = ttk.Label(flt_hdr, text="", style="Warn.TLabel")
+        self.rules_badge_lbl.pack(side="left", padx=(12, 0))
+
+        ttk.Button(
+            flt_hdr, text="⚙  Rules & Settings…", command=self._open_settings
+        ).pack(side="right")
         ttk.Checkbutton(
             root,
             text="🛡  Block dangerous executables  "
@@ -302,6 +315,31 @@ class GhostHarvest(tk.Tk):
         except (OSError, ValueError, PermissionError):
             self.space_lbl.config(text="Unable to check disk space", style="Warn.TLabel")
 
+    def _open_settings(self) -> None:
+        SettingsDialog(self, self.rules, self._on_rules_applied)
+
+    def _on_rules_applied(self, new_rules: RulesConfig) -> None:
+        self.rules = new_rules
+        self._update_rules_badge()
+        self._refresh_preview()
+
+    def _update_rules_badge(self) -> None:
+        if self.rules.has_overrides():
+            allowed, extra_exts, extra_dirs = self.rules.override_counts()
+            parts: list[str] = []
+            if allowed:
+                parts.append(f"+{allowed} unblocked")
+            if extra_exts:
+                parts.append(f"+{extra_exts} blocked exts")
+            if extra_dirs:
+                parts.append(f"+{extra_dirs} blocked dirs")
+            txt = f"⚙  Active Overrides: {', '.join(parts)}"
+            if self.rules.is_persistent:
+                txt += " (Saved)"
+            self.rules_badge_lbl.config(text=txt)
+        else:
+            self.rules_badge_lbl.config(text="")
+
 
     # ══════════════════════════════════════════════════════════════════
     # QUEUE MANAGEMENT
@@ -389,6 +427,7 @@ class GhostHarvest(tk.Tk):
                 skip_bloat=settings["skip_bloat"],
                 custom_xd=settings["custom_xd"],
                 save_log=settings["save_log"],
+                rules=settings.get("rules", self.rules),
             )
 
         source = src or (self.queue[0] if self.queue else "<SOURCE>")
@@ -403,6 +442,7 @@ class GhostHarvest(tk.Tk):
             skip_bloat=self.skip_bloat.get(),
             custom_xd=self.custom_xd.get().strip(),
             save_log=self.save_log.get(),
+            rules=self.rules,
         )
 
     def _refresh_preview(self) -> None:
@@ -628,6 +668,7 @@ class GhostHarvest(tk.Tk):
             "magic_scan": self.magic_scan.get(),
             "scan_plain": self.scan_plain.get(),
             "hash_verify": self.hash_verify.get(),
+            "rules": self.rules,
         }
 
         # Check destination-inside-source guard (IMP-001 / BUG-009)
@@ -702,11 +743,22 @@ class GhostHarvest(tk.Tk):
         }
         dest = settings["dest"]
 
-        # Build the blocked-extension set once (using removeprefix — S2 fix)
-        blocked_exts_set: set[str] = {
-            e.removeprefix("*.").lower() for e in DANGEROUS_EXTS
-        }
-        skip_dirs_set: set[str] = set(BLOAT_DIRS) if settings["skip_bloat"] else set()
+        # Build blocked extensions and scanner allowlists from active rules
+        rules: RulesConfig | None = settings.get("rules")
+        if rules is not None:
+            blocked_exts_set = rules.get_effective_blocked_exts_set()
+            skip_dirs_set = set(rules.get_effective_bloat_dirs(BLOAT_DIRS)) if settings["skip_bloat"] else set()
+            zip_doc_exts_set = rules.get_effective_zip_doc_exts()
+            ole_doc_exts_set = rules.get_effective_ole_doc_exts()
+            script_doc_exts_set = rules.get_effective_script_exts()
+        else:
+            blocked_exts_set = {
+                e.removeprefix("*.").lower() for e in DANGEROUS_EXTS
+            }
+            skip_dirs_set = set(BLOAT_DIRS) if settings["skip_bloat"] else set()
+            zip_doc_exts_set = ZIP_DOC_EXTS
+            ole_doc_exts_set = OLE_DOC_EXTS
+            script_doc_exts_set = SAFE_SCRIPT_EXTS
 
         for i, src in enumerate(settings["queue"], 1):
             if self.abort_event.is_set():
@@ -798,8 +850,9 @@ class GhostHarvest(tk.Tk):
                 scanner = PostCopyScanner(
                     blocked_exts=blocked_exts_set,
                     skip_dirs=skip_dirs_set,
-                    zip_doc_exts=ZIP_DOC_EXTS,
-                    ole_doc_exts=OLE_DOC_EXTS,
+                    zip_doc_exts=zip_doc_exts_set,
+                    ole_doc_exts=ole_doc_exts_set,
+                    script_doc_exts=script_doc_exts_set,
                     scan_plain=settings["scan_plain"],
                 )
                 flagged = scanner.scan_directory(

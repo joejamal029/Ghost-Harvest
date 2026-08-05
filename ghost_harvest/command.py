@@ -10,7 +10,12 @@ from __future__ import annotations
 
 import shlex
 
+from typing import TYPE_CHECKING
+
 from .constants import BLOAT_DIRS, DANGEROUS_EXTS
+
+if TYPE_CHECKING:
+    from .rules import RulesConfig
 
 __all__ = ["build_args", "build_display_cmd"]
 
@@ -42,6 +47,7 @@ def build_args(
     skip_bloat: bool = True,
     custom_xd: str = "",
     save_log: bool = True,
+    rules: RulesConfig | None = None,
 ) -> list[str]:
     """
     Build the robocopy argument list for subprocess.Popen(shell=False).
@@ -76,10 +82,19 @@ def build_args(
     # Dangerous extension filter
     if block_exts:
         args.append("/XF")
-        args.extend(DANGEROUS_EXTS)
+        if rules is not None:
+            args.extend(rules.get_effective_dangerous_exts())
+        else:
+            args.extend(DANGEROUS_EXTS)
 
     # Directory exclusions
-    xd: list[str] = list(BLOAT_DIRS) if skip_bloat else []
+    if rules is not None and skip_bloat:
+        xd: list[str] = rules.get_effective_bloat_dirs(BLOAT_DIRS)
+    elif skip_bloat:
+        xd = list(BLOAT_DIRS)
+    else:
+        xd = []
+
     extra = custom_xd.strip()
     if extra:
         xd.extend(shlex.split(extra))
