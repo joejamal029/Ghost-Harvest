@@ -10,7 +10,7 @@ import re
 import sys
 from pathlib import Path
 
-__all__ = ["is_admin", "elevate", "sha256", "format_size", "strip_ansi"]
+__all__ = ["is_admin", "elevate", "sha256", "format_size", "strip_ansi", "is_file_path"]
 
 
 def is_admin() -> bool:
@@ -94,3 +94,25 @@ _ANSI_RE = re.compile(r'\x1b\[[0-9;]*[mK]')
 def strip_ansi(text: str) -> str:
     """Strip ANSI escape sequences from a string."""
     return _ANSI_RE.sub('', text)
+
+
+def is_file_path(path: str | Path) -> bool:
+    """
+    Determine if a path represents an individual file rather than a directory.
+
+    Checks filesystem if the path exists; otherwise infers based on extension
+    and trailing slashes.
+    """
+    p = Path(path)
+    try:
+        if p.is_file():
+            return True
+        if p.is_dir():
+            return False
+    except (OSError, PermissionError):
+        pass
+
+    s = str(path).strip()
+    if s.endswith(("\\", "/")):
+        return False
+    return bool(p.suffix)

@@ -9,10 +9,11 @@ Two functions:
 from __future__ import annotations
 
 import shlex
-
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .constants import BLOAT_DIRS, DANGEROUS_EXTS
+from .utils import is_file_path
 
 if TYPE_CHECKING:
     from .rules import RulesConfig
@@ -41,6 +42,7 @@ def build_args(
     dest: str,
     threads: int = 16,
     *,
+    file_name: str | None = None,
     restartable: bool = True,
     dry_run: bool = False,
     block_exts: bool = True,
@@ -55,18 +57,39 @@ def build_args(
     Security: returns a **list** — never a single string that is handed
     to cmd.exe, eliminating command-injection via crafted folder names.
     Includes /XJ to block junction-point traversal attacks (S4).
+    Supports copying individual files or full directory trees.
     """
-    source = _normalize_path(source)
-    dest = _normalize_path(dest)
+    if file_name is not None:
+        is_single_file = True
+        source_dir = _normalize_path(source)
+        target_file: str | None = file_name
+    elif is_file_path(source):
+        is_single_file = True
+        src_path = Path(source)
+        source_dir = _normalize_path(str(src_path.parent))
+        target_file = src_path.name
+    else:
+        is_single_file = False
+        source_dir = _normalize_path(source)
+        target_file = None
+
+    dest_dir = _normalize_path(dest)
 
     args: list[str] = [
         "robocopy",
-        source,
-        dest,
-        "/E",               # recurse including empty dirs
+        source_dir,
+        dest_dir,
+    ]
+
+    if is_single_file and target_file:
+        args.append(target_file)
+    else:
+        args.append("/E")  # recurse including empty dirs
+
+    args.extend([
         "/COPY:DAT",        # Data + Attributes + Timestamps (no ADS)
         f"/MT:{threads}",   # multi-threaded
-    ]
+    ])
 
     if restartable:
         args.append("/ZB")  # restartable → backup mode fallback

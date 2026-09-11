@@ -22,7 +22,7 @@ from .command import build_args, build_display_cmd
 from .constants import BLOAT_DIRS, DANGEROUS_EXTS, ZIP_DOC_EXTS, OLE_DOC_EXTS, SAFE_SCRIPT_EXTS, ROBOCOPY_SUCCESS_CODES
 from .hasher import ParallelHashVerifier
 from .manifest import write_manifest
-from .utils import strip_ansi, format_size
+from .utils import format_size, is_file_path, strip_ansi
 from .scanner import PostCopyScanner
 from .rules import RulesConfig
 from .settings_dialog import SettingsDialog
@@ -106,16 +106,17 @@ class GhostHarvest(tk.Tk):
         add_frame.pack(side="right")
 
         self.src_entry_var = tk.StringVar()
-        self.src_entry = ttk.Entry(add_frame, textvariable=self.src_entry_var, width=32, font=("Consolas", 10))
+        self.src_entry = ttk.Entry(add_frame, textvariable=self.src_entry_var, width=30, font=("Consolas", 10))
         self.src_entry.pack(side="left", padx=(0, 6), ipady=3)
-        self.src_entry_var.set("Type folder path directly...")
+        self.src_entry_var.set("Type file or folder path...")
 
         self.src_entry.bind("<FocusIn>", lambda _: self._clear_src_placeholder())
         self.src_entry.bind("<FocusOut>", lambda _: self._add_src_placeholder())
         self.src_entry.bind("<Return>", lambda _: self._q_add_typed())
 
-        ttk.Button(add_frame, text="+ Add Typed Path", command=self._q_add_typed).pack(side="left", padx=(0, 6))
-        ttk.Button(add_frame, text="Browse…", command=self._q_add).pack(side="left")
+        ttk.Button(add_frame, text="+ Add Typed Path", command=self._q_add_typed).pack(side="left", padx=(0, 4))
+        ttk.Button(add_frame, text="+ File(s)…", command=self._q_add_files).pack(side="left", padx=(0, 4))
+        ttk.Button(add_frame, text="+ Folder…", command=self._q_add_folder).pack(side="left")
 
         qb = ttk.Frame(root)
         qb.pack(fill="x")
@@ -346,16 +347,16 @@ class GhostHarvest(tk.Tk):
     # ══════════════════════════════════════════════════════════════════
 
     def _clear_src_placeholder(self) -> None:
-        if self.src_entry_var.get() == "Type folder path directly...":
+        if self.src_entry_var.get() == "Type file or folder path...":
             self.src_entry_var.set("")
 
     def _add_src_placeholder(self) -> None:
         if not self.src_entry_var.get().strip():
-            self.src_entry_var.set("Type folder path directly...")
+            self.src_entry_var.set("Type file or folder path...")
 
     def _q_add_typed(self) -> None:
         p = self.src_entry_var.get().strip()
-        if p and p != "Type folder path directly...":
+        if p and p != "Type file or folder path...":
             p = p.replace("/", "\\")
             if p not in self.queue:
                 self.queue.append(p)
@@ -365,7 +366,20 @@ class GhostHarvest(tk.Tk):
             self._add_src_placeholder()
             self.focus_set()
 
-    def _q_add(self) -> None:
+    def _q_add_files(self) -> None:
+        paths = filedialog.askopenfilenames(title="Select File(s) to Add to Queue")
+        if paths:
+            added = False
+            for p in paths:
+                p = p.replace("/", "\\")
+                if p not in self.queue:
+                    self.queue.append(p)
+                    self.q_lb.insert("end", p)
+                    added = True
+            if added:
+                self._refresh_preview()
+
+    def _q_add_folder(self) -> None:
         p = filedialog.askdirectory(title="Add Source Folder to Queue")
         if p:
             p = p.replace("/", "\\")
@@ -373,6 +387,9 @@ class GhostHarvest(tk.Tk):
                 self.queue.append(p)
                 self.q_lb.insert("end", p)
                 self._refresh_preview()
+
+    def _q_add(self) -> None:
+        self._q_add_folder()
 
     def _q_rm(self) -> None:
         sel = self.q_lb.curselection()
@@ -448,8 +465,8 @@ class GhostHarvest(tk.Tk):
     def _refresh_preview(self) -> None:
         n = len(self.queue)
         label = (
-            "(no folders queued)" if n == 0
-            else f"({n} folder{'s' if n > 1 else ''} queued"
+            "(no items queued)" if n == 0
+            else f"({n} item{'s' if n > 1 else ''} queued"
                  + (" — showing #1)" if n > 1 else ")")
         )
         self.q_count_lbl.config(text=label)
@@ -477,7 +494,7 @@ class GhostHarvest(tk.Tk):
 
     def _preflight(self) -> None:
         if not self.queue:
-            messagebox.showwarning("Empty Queue", "Add at least one source folder.")
+            messagebox.showwarning("Empty Queue", "Add at least one source file or folder.")
             return
         if not self.dest_var.get().strip():
             messagebox.showwarning("No Destination", "Set a destination folder.")
@@ -517,8 +534,11 @@ class GhostHarvest(tk.Tk):
         dest = settings["dest"]
 
         for src in settings["queue"]:
-            src_name = Path(src).name or Path(src).drive.replace(":", "").strip()
-            dst = str(Path(dest) / src_name)
+            if is_file_path(src):
+                dst = dest
+            else:
+                src_name = Path(src).name or Path(src).drive.replace(":", "").strip()
+                dst = str(Path(dest) / src_name)
             args = self._current_args(src=src, dst=dst, settings=settings)
 
             try:
@@ -571,7 +591,7 @@ class GhostHarvest(tk.Tk):
             f"\n{'─' * 52}\n"
             f"  PRE-FLIGHT SUMMARY\n"
             f"{'─' * 52}\n"
-            f"  Folders queued   :  {len(settings['queue'])}\n"
+            f"  Items queued     :  {len(settings['queue'])}\n"
             f"  Total files found:  {total_files:,}\n"
             f"  Files to copy    :  {max(0, total_files - skipped):,}\n"
             f"  Estimated size   :  {size_str}\n"
@@ -648,7 +668,7 @@ class GhostHarvest(tk.Tk):
 
     def _start(self) -> None:
         if not self.queue:
-            messagebox.showwarning("Empty Queue", "Add at least one source folder.")
+            messagebox.showwarning("Empty Queue", "Add at least one source file or folder.")
             return
         dest = self.dest_var.get().strip()
         if not dest:
@@ -675,10 +695,16 @@ class GhostHarvest(tk.Tk):
         dest_path = Path(dest).resolve()
         for src in settings["queue"]:
             src_path = Path(src).resolve()
-            if src_path in dest_path.parents or dest_path in src_path.parents or dest_path == src_path:
-                self._log(f"⚠  Destination '{dest}' is inside or contains source '{src}' – would cause infinite recursion. Aborted.\n", "bad")
-                self._finish()
-                return
+            if is_file_path(src_path):
+                if src_path == dest_path / src_path.name:
+                    self._log(f"⚠  Source file '{src}' is already located at destination '{dest}'. Aborted.\n", "bad")
+                    self._finish()
+                    return
+            else:
+                if src_path in dest_path.parents or dest_path in src_path.parents or dest_path == src_path:
+                    self._log(f"⚠  Destination '{dest}' is inside or contains source '{src}' – would cause infinite recursion. Aborted.\n", "bad")
+                    self._finish()
+                    return
 
         # Check custom XD spaces (BUG-006 / BUG-011)
         extra = settings.get("custom_xd", "").strip()
@@ -705,7 +731,7 @@ class GhostHarvest(tk.Tk):
         if not messagebox.askyesno(
             "Confirm Migration",
             f"Mode    : {mode}\n"
-            f"Folders : {n}\n"
+            f"Items   : {n}\n"
             f"Dest    : {dest}\n"
             f"Options : {', '.join(flags) or 'none'}\n\n"
             "Proceed?",
@@ -722,7 +748,7 @@ class GhostHarvest(tk.Tk):
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self._log(f"\n{'═' * 58}\n", "dim")
         self._log(f"▶  Migration started  {ts}\n", "info")
-        self._log(f"   {n} folder(s)  →  {dest}\n", "dim")
+        self._log(f"   {n} item(s)  →  {dest}\n", "dim")
         self._log(f"{'═' * 58}\n", "dim")
 
         threading.Thread(target=self._pipeline, args=(settings,), daemon=True).start()
@@ -764,14 +790,24 @@ class GhostHarvest(tk.Tk):
             if self.abort_event.is_set():
                 break
 
-            src_name = Path(src).name or Path(src).drive.replace(":", "").strip()
-            folder_dest = str(Path(dest) / src_name)
-            os.makedirs(folder_dest, exist_ok=True)
+            is_file = is_file_path(src)
+            src_path = Path(src)
+
+            if is_file:
+                folder_dest = dest
+                scan_target = str(Path(dest) / src_path.name)
+                header_title = f"File: {src_path.name}"
+            else:
+                src_name = src_path.name or src_path.drive.replace(":", "").strip()
+                folder_dest = str(Path(dest) / src_name)
+                scan_target = folder_dest
+                os.makedirs(folder_dest, exist_ok=True)
+                header_title = f"Folder: {src}"
 
             if self._alive:
                 self.after(
                     0, self._log,
-                    f"\n{'─' * 58}\n  [{i}/{len(settings['queue'])}]  {src}\n{'─' * 58}\n",
+                    f"\n{'─' * 58}\n  [{i}/{len(settings['queue'])}]  {header_title}\n{'─' * 58}\n",
                     "info",
                 )
 
@@ -856,7 +892,7 @@ class GhostHarvest(tk.Tk):
                     scan_plain=settings["scan_plain"],
                 )
                 flagged = scanner.scan_directory(
-                    folder_dest,
+                    scan_target,
                     callback=_scan_cb,
                     abort_event=self.abort_event,
                 )
@@ -908,7 +944,7 @@ class GhostHarvest(tk.Tk):
                     max_workers=settings["threads"],
                 )
                 ok, fail, _missing = verifier.verify(
-                    src, folder_dest,
+                    src, scan_target,
                     callback=_hash_cb,
                     abort_event=self.abort_event,
                 )

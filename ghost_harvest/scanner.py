@@ -105,6 +105,96 @@ class PostCopyScanner:
 
     # ------------------------------------------------------------------ #
 
+    def _inspect_file(self, path: Path, cb: Callable[[str, str], None]) -> dict | None:
+        """Examine a single file against double-extension and magic byte signatures."""
+        fname = path.name
+        ext = path.suffix.lower()
+
+        # ── Double extension check (H2) ───────────────────────
+        if has_double_extension(path, self.blocked_exts):
+            entry = {
+                "path":   str(path),
+                "ext":    ext or "(none)",
+                "reason": f"DOUBLE_EXT — suspicious multi-extension: "
+                          f"{''.join(path.suffixes)}",
+                "action": "purge",
+            }
+            cb(
+                f"  ⚠  {fname}  →  DOUBLE EXTENSION  "
+                f"{''.join(path.suffixes)}\n",
+                "magic",
+            )
+            return entry
+
+        # ── Skip known plain-text files (performance) ─────────
+        if not self.scan_plain and ext in PLAIN_TEXT_EXTS:
+            return None
+
+        # ── Magic-byte check ──────────────────────────────────
+        try:
+            hit, label = is_exec_by_magic(path)
+        except PermissionError:
+            cb(f"  ⚠  Permission denied – cannot scan: {fname}\n", "warn")
+            return None
+        except OSError as e:
+            cb(f"  ⚠  I/O error reading {fname}: {e}\n", "warn")
+            return None
+        if not hit:
+            return None
+
+        # Determine action: purge or warn
+        action = "purge"
+        reason = f"MAGIC_BYTE — {label}"
+
+        if label == "ZIP Archive (DOCX/JAR/APK)" and ext in self.zip_doc_exts:
+            action = "warn"
+            reason = f"MAGIC_BYTE_WARN — {label} (safe doc ext {ext})"
+        elif label == "OLE Compound File (MSI/DOC)" and ext in self.ole_doc_exts:
+            action = "warn"
+            reason = f"MAGIC_BYTE_WARN — {label} (safe doc ext {ext})"
+        elif label == "Script with Shebang (#!)" and ext in self.script_doc_exts:
+            action = "warn"
+            reason = f"MAGIC_BYTE_WARN — {label} (safe script ext {ext})"
+
+        entry = {
+            "path":   str(path),
+            "ext":    ext or "(none)",
+            "reason": reason,
+            "action": action,
+        }
+
+        icon = "⚠" if action == "purge" else "ℹ"
+        tag = "magic" if action == "purge" else "dim"
+        cb(f"  {icon}  {fname}  [{ext}]  →  {label}"
+           f"{'  (warn only)' if action == 'warn' else ''}\n", tag)
+        return entry
+
+    def scan_file(
+        self,
+        file_path: str | Path,
+        callback: Callable[[str, str], None] | None = None,
+    ) -> list[dict]:
+        """Inspect an individual file in the destination for security risks."""
+        cb = callback or (lambda _m, _t: None)
+        path = Path(file_path)
+        cb(f"\n🔬  Post-copy scan: {path.name}\n", "magic")
+        if not path.is_file():
+            return []
+
+        flagged: list[dict] = []
+        entry = self._inspect_file(path, cb)
+        if entry:
+            flagged.append(entry)
+
+        purge_count = sum(1 for e in flagged if e["action"] == "purge")
+        warn_count = sum(1 for e in flagged if e["action"] == "warn")
+        cb(
+            f"  Scan done — {purge_count} to purge · "
+            f"{warn_count} warned · {len(flagged)} total flagged\n",
+            "magic",
+        )
+        return flagged
+
     def scan_directory(
         self,
         directory: str,
@@ -113,11 +203,11 @@ class PostCopyScanner:
     ) -> list[dict]:
         """
         Walk *directory* and return a list of flagged items.
-
-        *callback(message, tag)* is called for every log-worthy event;
-        the caller is responsible for thread-safe dispatch (e.g.
-        ``root.after(0, self._log, msg, tag)``).
+        If *directory* points directly to a single file, scans that file.
         """
+        if Path(directory).is_file():
+            return self.scan_file(directory, callback=callback)
+
         flagged: list[dict] = []
         cb = callback or (lambda _m, _t: None)
 
@@ -138,67 +228,9 @@ class PostCopyScanner:
                     continue
 
                 path = Path(root_dir) / fname
-                ext = path.suffix.lower()
-
-                # ── Double extension check (H2) ───────────────────────
-                if has_double_extension(path, self.blocked_exts):
-                    entry = {
-                        "path":   str(path),
-                        "ext":    ext or "(none)",
-                        "reason": f"DOUBLE_EXT — suspicious multi-extension: "
-                                  f"{''.join(path.suffixes)}",
-                        "action": "purge",
-                    }
+                entry = self._inspect_file(path, cb)
+                if entry:
                     flagged.append(entry)
-                    cb(
-                        f"  ⚠  {fname}  →  DOUBLE EXTENSION  "
-                        f"{''.join(path.suffixes)}\n",
-                        "magic",
-                    )
-                    continue  # no need to also magic-check
-
-                # ── Skip known plain-text files (performance) ─────────
-                if not self.scan_plain and ext in PLAIN_TEXT_EXTS:
-                    continue
-
-                # ── Magic-byte check ──────────────────────────────────
-                try:
-                    hit, label = is_exec_by_magic(path)
-                except PermissionError:
-                    cb(f"  ⚠  Permission denied – cannot scan: {fname}\n", "warn")
-                    continue
-                except OSError as e:
-                    cb(f"  ⚠  I/O error reading {fname}: {e}\n", "warn")
-                    continue
-                if not hit:
-                    continue
-
-                # Determine action: purge or warn
-                action = "purge"
-                reason = f"MAGIC_BYTE — {label}"
-
-                if label == "ZIP Archive (DOCX/JAR/APK)" and ext in self.zip_doc_exts:
-                    action = "warn"
-                    reason = f"MAGIC_BYTE_WARN — {label} (safe doc ext {ext})"
-                elif label == "OLE Compound File (MSI/DOC)" and ext in self.ole_doc_exts:
-                    action = "warn"
-                    reason = f"MAGIC_BYTE_WARN — {label} (safe doc ext {ext})"
-                elif label == "Script with Shebang (#!)" and ext in self.script_doc_exts:
-                    action = "warn"
-                    reason = f"MAGIC_BYTE_WARN — {label} (safe script ext {ext})"
-
-                entry = {
-                    "path":   str(path),
-                    "ext":    ext or "(none)",
-                    "reason": reason,
-                    "action": action,
-                }
-                flagged.append(entry)
-
-                icon = "⚠" if action == "purge" else "ℹ"
-                tag = "magic" if action == "purge" else "dim"
-                cb(f"  {icon}  {fname}  [{ext}]  →  {label}"
-                   f"{'  (warn only)' if action == 'warn' else ''}\n", tag)
 
         purge_count = sum(1 for e in flagged if e["action"] == "purge")
         warn_count = sum(1 for e in flagged if e["action"] == "warn")

@@ -26,19 +26,23 @@ GhostHarvest's interface is divided into functional zones designed to construct 
 
 ### Zone 1: Source Queue Management
 
-The **Source Queue** allows you to consolidate multiple source folders into a single surgical migration batch. To ensure maximum device security, you can type paths directly to avoid system file dialogs.
+The **Source Queue** allows you to consolidate multiple source folders and standalone individual files into a single surgical migration batch. To ensure maximum device security, you can type paths directly to avoid system file dialogs on infected drives.
 
 | GUI Control | Action | Security / Technical Purpose |
 |:---|:---|:---|
-| **`Type folder path directly...`** | Direct text input field. | Allows typing or pasting absolute source paths manually (e.g. `E:\InfectedFolder`) to completely bypass file explorer shell interaction. |
-| **`+ Add Typed Path`** | Appends the manually typed path. | Adds the typed text path to the list queue with zero drive communication. |
-| **`Browse…`** | Spawns a native directory selector. | Convenient directory browser. Use **only** for trusted/clean local paths. |
-| **`↑` (Move Up)** | Shifts the selected folder up in the queue. | Reorders execution sequence (folders copy in top-down order). |
-| **`↓` (Move Down)** | Shifts the selected folder down in the queue. | Reorders execution sequence. |
-| **`✕` (Remove)** | Deletes the selected folder path from the queue. | Excludes the folder from the current migration batch. |
+| **`Type file or folder path...`** | Direct text input field. | Allows typing or pasting absolute source paths manually (e.g. `E:\InfectedFolder` or `E:\Docs\report.pdf`) to completely bypass file explorer shell interaction. |
+| **`+ Add Typed Path`** | Appends the manually typed path. | Adds the typed text path to the queue with automated detection of files versus folders. |
+| **`+ File(s)…`** | Spawns a native multi-file selector (`askopenfilenames`). | Select one or dozens of standalone files simultaneously across directories using Shift/Ctrl. |
+| **`+ Folder…`** | Spawns a native directory browser (`askdirectory`). | Select an entire directory tree. Use for trusted/clean local paths. |
+| **`↑` (Move Up)** | Shifts the selected item up in the queue. | Reorders execution sequence (items copy in top-down order). |
+| **`↓` (Move Down)** | Shifts the selected item down in the queue. | Reorders execution sequence. |
+| **`✕` (Remove)** | Deletes the selected item path from the queue. | Excludes the item from the current migration batch. |
 
 > [!NOTE]
-> **Path Validation:** The source queue rejects empty entries and duplicate paths to prevent redundant copy processes.
+> **Destination Layout for Files vs. Folders:**
+> * **Folders** (e.g. `E:\InfectedFolder`): Copied into `<Destination>\InfectedFolder\...` mirroring the full directory tree.
+> * **Individual Files** (e.g. `E:\InfectedFolder\photo.jpg`): Copied directly into `<Destination>\photo.jpg`. Multiple standalone files land cleanly in the destination root directory without creating single-file nested folders.
+> * **Path Validation:** The source queue rejects empty entries and duplicate paths to prevent redundant copy processes.
 
 ---
 
@@ -72,6 +76,18 @@ Controls what files and directories are allowed to cross the security boundary a
 * **Robocopy Mapping:** Appends custom arguments to `/XD`
 * **Parsing Engine:** Uses standard `shlex.split` to parse the string.
 * **Purpose:** Allows you to exclude specific folder names. Since it uses `shlex.split`, you can safely input folder names containing spaces by wrapping them in double quotes (e.g. `"My Old Temp Folder" "Trash"`).
+
+#### 4. `⚙ Rules & Settings…` Modal Dialog
+* **Purpose:** Allows fine-grained customization of allowed/blocked extensions and exclusions on the fly without editing Python source code:
+  1. **Allowed / Unblocked Extensions:** Unblock extensions (e.g. `.zip`, `.py`, `.iso`) from both Robocopy `/XF` exclusions and post-copy scanner purge rules simultaneously.
+  2. **Additional Blocked Extensions:** Extra patterns to block via `/XF` and enforce during double-extension checks.
+  3. **Additional Excluded Directories:** Extra directory names to exclude during Robocopy (`/XD`) and scanner passes.
+  4. **Safe Shebang Script Extensions:** Extra extensions recognized as safe plain-text scripts (downgrading shebang `#!` detections to `warn` instead of `purge`).
+* **Modes of Application:**
+  * **Apply for Session:** Applies rules in-memory for the current running session only.
+  * **Save as Permanent Default:** Persists rules to disk at `%APPDATA%\GhostHarvest\rules_config.json` for automatic loading across restarts.
+  * **Reset to Factory Defaults:** Clears custom rules and deletes disk configuration.
+* **Active Overrides Indicator:** A visible badge appears next to the Filters header (e.g. `⚙ Active Overrides: +1 unblocked (Saved)`) whenever custom rules are active.
 
 ---
 
@@ -116,9 +132,10 @@ Toggles the execution parameters of the recovery thread, Robocopy options, and p
 
 * **Command Preview Box:** Displays the exact command-line string that is passed to the OS in real-time.
   * **Security Note:** The preview quotes paths for readability, but the backend passes argument lists directly via `subprocess.Popen(args, shell=False)` to prevent argument injection.
+  * **Intelligent Command Generation:** For folder sources, the command includes `/E` (recurse subdirectories). For individual file sources, the command specifies the filename directly (e.g. `robocopy "<src_dir>\" "<dest_dir>\" "<filename>"`) and omits `/E`.
 * **`Refresh` Button:** Manually forces a refresh and redraw of the command preview box.
 * **`Copy` Button:** Copies the active command preview string to your clipboard for manual execution.
-* **`Pre-flight` Button:** Spawns a background thread to run an instantaneous dry-run analysis. It scans the source queue to calculate the exact file count and byte footprint of the migration, checking for permission constraints before execution.
+* **`Pre-flight` Button:** Spawns a background thread to run an instantaneous dry-run analysis. It scans the source queue (files and folders) to calculate the exact file count and byte footprint of the migration, checking for permission constraints before execution.
 * **`RUN MIGRATION` Button:** Initiates the 6-stage surgical recovery pipeline on a background daemon thread.
 * **Progress Bar & Status Label:** Displays real-time operation status (`Ready.`, `Copying...`, `Scanning...`, `Verifying...`, `Completed.`).
 

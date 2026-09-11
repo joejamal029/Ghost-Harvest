@@ -10,7 +10,7 @@
 ## 2. Root Cause Analysis
 
 ### A. The Signature Definition
-In [`ghost_harvest/constants.py`](file:///c:/Users/USER/Desktop/APPS/Ghost%20Harvest/ghost_harvest/constants.py), the `EXEC_SIGS` list contains the magic bytes for shell scripts starting with a shebang:
+In [`ghost_harvest/constants.py`](../ghost_harvest/constants.py), the `EXEC_SIGS` list contains the magic bytes for shell scripts starting with a shebang:
 ```python
 EXEC_SIGS: list[tuple[int, bytes, str]] = [
     ...
@@ -19,7 +19,7 @@ EXEC_SIGS: list[tuple[int, bytes, str]] = [
 ```
 
 ### B. The Scanner Logic
-In [`ghost_harvest/scanner.py`](file:///c:/Users/USER/Desktop/APPS/Ghost%20Harvest/ghost_harvest/scanner.py), the scanner walks the destination:
+In [`ghost_harvest/scanner.py`](../ghost_harvest/scanner.py), the scanner walks the destination:
 1. Since the file `html_merger.py` has a `.py` extension, it is listed in `PLAIN_TEXT_EXTS`.
 2. However, if the user toggles **`Scan plain-text`** to **[ON]**, the scanner bypasses the fast-skip logic and reads the first 16 bytes of the file.
 3. The scanner matches `#!` at offset `0` and flags the file with `MAGIC_BYTE`.
@@ -27,7 +27,7 @@ In [`ghost_harvest/scanner.py`](file:///c:/Users/USER/Desktop/APPS/Ghost%20Harve
 5. Since `.py` is not allowlisted, the scanner assigns `"action": "purge"`.
 
 ### C. The Deletion Trigger
-In [`ghost_harvest/app.py`](file:///c:/Users/USER/Desktop/APPS/Ghost%20Harvest/ghost_harvest/app.py), the migration pipeline processes the scanner's report:
+In [`ghost_harvest/app.py`](../ghost_harvest/app.py), the migration pipeline processes the scanner's report:
 ```python
 if item["action"] == "purge":
     os.remove(item["path"])
@@ -41,13 +41,13 @@ This instantly deletes the file from the recovered destination workspace, leavin
 We have identified two elegant solutions to resolve this without degrading the tool's zero-trust security boundaries.
 
 ### Option A: Script Extension Alignment (Recommended)
-1. **Define Script Extensions:** Add a centralized set of legitimate script extensions in [`ghost_harvest/constants.py`](file:///c:/Users/USER/Desktop/APPS/Ghost%20Harvest/ghost_harvest/constants.py):
+1. **Define Script Extensions:** Add a centralized set of legitimate script extensions in [`ghost_harvest/constants.py`](../ghost_harvest/constants.py):
    ```python
    SAFE_SCRIPT_EXTS: set[str] = {
        ".py", ".pyw", ".sh", ".bash", ".pl", ".rb", ".php", ".lua", ".tcl"
    }
    ```
-2. **Scanner Exception:** Update `PostCopyScanner` in [`ghost_harvest/scanner.py`](file:///c:/Users/USER/Desktop/APPS/Ghost%20Harvest/ghost_harvest/scanner.py) to check:
+2. **Scanner Exception:** Update `PostCopyScanner` in [`ghost_harvest/scanner.py`](../ghost_harvest/scanner.py) to check:
    * If a file matches the `Script with Shebang (#!)` signature **AND** its extension is in `SAFE_SCRIPT_EXTS`, downgrade the action from `"purge"` to `"warn"` (or skip entirely if the user prefers silent trust).
    * If a file matches `#!` but has a non-script extension (such as `.jpg` or `.png`), retain the `"purge"` action to prevent hidden polyglot executable script attacks.
 
@@ -57,7 +57,9 @@ We have identified two elegant solutions to resolve this without degrading the t
 
 ---
 
-## 4. Current Workaround
-Until this issue is patched in the next sprint:
-> [!WARNING]
-> **DEVELOPER WORKAROUND:** Ensure the **`Scan plain-text`** checkbox is turned **[OFF]** in the GUI settings panel before running migrations containing programming code, scripts, or repositories. This will skip scanning plain-text files entirely, preserving all shebang headers safely.
+## 4. Resolution (Implemented in v2.1.0)
+This issue was fully resolved in GhostHarvest v2.1.0 via **Option A**:
+1. Defined `SAFE_SCRIPT_EXTS` in [`ghost_harvest/constants.py`](../ghost_harvest/constants.py) (`.py`, `.pyw`, `.sh`, `.bash`, `.pl`, `.rb`, `.php`, `.lua`, `.ps1`, `.tcl`).
+2. Updated `PostCopyScanner` in [`ghost_harvest/scanner.py`](../ghost_harvest/scanner.py) to assign `"action": "warn"` instead of `"purge"` whenever a shebang header is detected in a file whose extension matches `SAFE_SCRIPT_EXTS`.
+3. Integrated `SAFE_SCRIPT_EXTS` into the dynamic Rules & Settings modal (`SettingsDialog`) so users can customize script extensions on the fly without editing source code.
+

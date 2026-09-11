@@ -13,10 +13,10 @@ import ghost_harvest.command as c_mod
 import ghost_harvest.manifest as m_mod
 from ghost_harvest.command import build_args
 from ghost_harvest.constants import DANGEROUS_EXTS, EXEC_SIGS
-from ghost_harvest.utils import elevate
+from ghost_harvest.utils import elevate, is_file_path
 from ghost_harvest.scanner import has_double_extension
 from ghost_harvest.rules import RulesConfig, normalize_ext
-from pathlib import Path
+import tempfile
 
 passed = 0
 failed = 0
@@ -128,6 +128,38 @@ check("SAFE_SCRIPT_EXTS includes '.py'", ".py" in scanner.script_doc_exts)
 print("\n[S10] Extension Normalization")
 check("normalize_ext('*.ZIP') -> '.zip'", normalize_ext("*.ZIP") == ".zip")
 check("normalize_ext('exe') -> '.exe'", normalize_ext("exe") == ".exe")
+
+# S11: Individual File & Folder Support
+print("\n[S11] Individual File & Folder Support")
+check("is_file_path detects file with extension", is_file_path(r"C:\data\file.txt") is True)
+check("is_file_path detects trailing slash as directory", is_file_path(r"C:\data\folder\\") is False)
+check("is_file_path detects slash-free folder name as directory", is_file_path(r"C:\data\folder") is False)
+
+file_cmd = build_args(r"C:\Source\document.pdf", r"D:\Clean")
+check("Single-file robocopy contains filename", "document.pdf" in file_cmd)
+check("Single-file robocopy omits /E", "/E" not in file_cmd)
+check("Single-file robocopy targets parent source", file_cmd[1].rstrip("\\") == r"C:\Source")
+check("Single-file robocopy targets destination directory", file_cmd[2].rstrip("\\") == r"D:\Clean")
+
+folder_cmd = build_args(r"C:\Source\Folder", r"D:\Clean\Folder")
+check("Folder robocopy includes /E", "/E" in folder_cmd)
+
+with tempfile.TemporaryDirectory() as td:
+    tf = Path(td) / "safe.txt"
+    tf.write_text("hello world")
+    bad_tf = Path(td) / "danger.pdf.exe"
+    bad_tf.write_bytes(b"MZ\x90\x00")
+
+    sc = s_mod.PostCopyScanner(blocked_exts={"exe"})
+    res_safe = sc.scan_directory(str(tf))
+    check("Scanner approves safe single file", len(res_safe) == 0)
+    res_bad = sc.scan_directory(str(bad_tf))
+    check("Scanner flags suspicious single file", len(res_bad) == 1 and res_bad[0]["action"] == "purge")
+
+    # Verify single file hashing
+    hv = h_mod.ParallelHashVerifier()
+    ok, fail, miss = hv.verify(str(tf), str(tf))
+    check("Hasher verifies matching single file", ok == 1 and fail == 0 and miss == 0)
 
 # Summary
 print(f"\n{'=' * 56}")

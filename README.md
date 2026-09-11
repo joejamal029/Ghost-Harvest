@@ -81,22 +81,26 @@ Ghost Harvest/
 │
 ├── main.py                          # Entry point — UAC elevation → GUI
 ├── README.md                        # ← you are here
+├── PRACTICAL_GUIDE.md               # User manual & practical testing guide
+├── launch.bat                       # Diagnostic launch script
 ├── GhostHarvest.py                  # Archived v2 monolith (755 lines)
 │
 └── ghost_harvest/                   # v2.1 modular package
     ├── __init__.py                  # __version__ = "2.1.0"
     ├── app.py                       # GUI shell + pipeline orchestration
-    ├── command.py                   # Robocopy CLI builder (list args)
+    ├── command.py                   # Robocopy CLI builder (file & folder list args)
     ├── constants.py                 # Security-critical lists (single source of truth)
-    ├── hasher.py                    # Parallel SHA-256 verification
+    ├── hasher.py                    # Parallel SHA-256 verification (files & folders)
     ├── manifest.py                  # _BLOCKED.txt writer
+    ├── rules.py                     # RulesConfig dataclass & disk persistence
     ├── scanner.py                   # Post-copy magic-byte + double-ext scanner
+    ├── settings_dialog.py           # Custom rules & settings modal dialog
     ├── theme.py                     # Catppuccin Mocha palette + ttk style config
-    ├── utils.py                     # Admin detection, UAC elevation, file hashing
+    ├── utils.py                     # Admin detection, UAC elevation, file hashing, path detection
     │
     └── tests/
         ├── __init__.py              # Tests package descriptor
-        └── validate_security.py     # 41-assertion security regression suite
+        └── validate_security.py     # 58-assertion security regression suite
 ```
 
 ---
@@ -109,15 +113,21 @@ Ghost Harvest/
 main.py
   └─► ghost_harvest.app        (GhostHarvest window)
         ├─► .command            (build_args / build_display_cmd)
-        │     └─► .constants
+        │     ├─► .constants
+        │     └─► .utils        (is_file_path)
         ├─► .scanner            (PostCopyScanner)
         │     └─► .constants
         ├─► .hasher             (ParallelHashVerifier)
         │     ├─► .constants
-        │     └─► .utils        (sha256)
+        │     └─► .utils        (sha256 / is_file_path)
         ├─► .manifest           (write_manifest)
+        ├─► .rules              (RulesConfig / JSON persistence)
+        │     └─► .constants
+        ├─► .settings_dialog    (SettingsDialog modal)
+        │     ├─► .rules
+        │     └─► .theme
         ├─► .theme              (apply_theme + colour constants)
-        └─► .utils              (is_admin / elevate / format_size)
+        └─► .utils              (is_admin / elevate / format_size / is_file_path)
 ```
 
 Every module imports **only** from siblings within the `ghost_harvest` package.
@@ -195,21 +205,38 @@ The single source of truth for every security-critical value.
 | `EXEC_SIGS` | `list[tuple]` | 16 | `(offset, bytes, label)` for header matching |
 | `ZIP_DOC_EXTS` | `set[str]` | 12 | ZIP-magic exts that get warn-not-purge |
 | `OLE_DOC_EXTS` | `set[str]` | 6 | OLE-magic exts that get warn-not-purge |
+| `SAFE_SCRIPT_EXTS` | `set[str]` | 10 | Extensions with shebangs that get warn-not-purge |
 | `MAGIC_READ_SIZE` | `int` | — | Bytes read per file for header check (16) |
 | `INTERNAL_PREFIX` | `str` | — | `"_GhostHarvest"` — skipped during verify |
+
+### `rules.py` — Dynamic Rules Configuration
+
+```python
+@dataclass
+class RulesConfig:
+    allowed_exts: set[str]
+    extra_blocked_exts: set[str]
+    extra_blocked_dirs: set[str]
+    custom_script_exts: set[str]
+    is_persistent: bool
+```
+
+Provides a unified single source of truth for runtime overrides. Synchronizes extension unblocking between Robocopy `/XF` exclusions and `PostCopyScanner` allowlists. Supports persistent JSON storage at `%APPDATA%\GhostHarvest\rules_config.json`.
+
+### `settings_dialog.py` — Rules & Settings Modal
+
+Provides the `SettingsDialog(tk.Toplevel)` window accessible via the **`⚙ Rules & Settings…`** button. Allows users to unblock extensions, add custom exclusions, and save defaults permanently without touching source code.
 
 ### `command.py` — Robocopy Argument Builder
 
 ```python
 build_args(
     source: str, dest: str, threads: int = 16,
-    *, restartable, dry_run, block_exts, skip_bloat, custom_xd, save_log
+    *, file_name=None, restartable, dry_run, block_exts, skip_bloat, custom_xd, save_log, rules=None
 ) -> list[str]
 ```
 
-Returns a **list** — never a string. This is the S1 fix: `Popen(args_list)` with
-`shell=False` (the default) avoids `cmd.exe` interpretation entirely, making
-command injection via folder names impossible.
+Returns a **list** — never a string. Supports both **directory trees** (using `/E`) and **individual files** (omits `/E` and passes the target filename). Automatically detects files via `is_file_path()` or explicit `file_name`.
 
 ```python
 build_display_cmd(args: list[str]) -> str
@@ -222,21 +249,12 @@ GUI text box — never passed to `Popen`.
 
 ```python
 class PostCopyScanner:
-    def __init__(self, blocked_exts, skip_dirs, zip_doc_exts, ole_doc_exts)
+    def __init__(self, blocked_exts, skip_dirs, zip_doc_exts, ole_doc_exts, script_doc_exts, scan_plain)
+    def scan_file(self, file_path, callback) -> list[dict]
     def scan_directory(self, directory, callback) -> list[dict]
 ```
 
-Walks the **destination** after robocopy finishes (not the infected source).
-Each returned dict:
-
-```python
-{
-    "path":   str,              # absolute path in destination
-    "ext":    str,              # file extension (or "(none)")
-    "reason": str,              # human-readable flag reason
-    "action": "purge" | "warn"  # purge = delete; warn = log only
-}
-```
+Walks the **destination** after robocopy finishes (never the infected source). If given a single file path, it automatically evaluates that file directly via `scan_file`.
 
 **Decision matrix for magic-byte hits:**
 
@@ -244,6 +262,7 @@ Each returned dict:
 |-------------|------------------------|--------|
 | ZIP (`PK..`) | `.docx`, `.xlsx`, etc. | `warn` |
 | OLE (`D0 CF 11 E0`) | `.doc`, `.xls`, etc. | `warn` |
+| Script with Shebang (`#!`) | `.py`, `.sh`, `.ps1`, etc. (`SAFE_SCRIPT_EXTS`) | `warn` |
 | Any executable sig | No allowlist match | `purge` |
 | Double extension detected | — | `purge` |
 
@@ -260,12 +279,9 @@ has_double_extension(path: Path, blocked_exts_set: set[str]) -> bool
 class ParallelHashVerifier:
     def __init__(self, max_workers: int = 16)
     def verify(self, src, dest, callback) -> tuple[int, int, int]
-    #                                         ok   fail  missing
 ```
 
-Uses `concurrent.futures.ThreadPoolExecutor`. Worker count matches the
-robocopy `/MT:` thread slider. Each worker hashes one `(src, dest)` file pair
-independently — I/O bound, so threads > GIL is fine.
+Uses `concurrent.futures.ThreadPoolExecutor`. Supports dual-pass recursive directory verification or direct file-to-file hash comparisons when verifying individual files.
 
 ### `manifest.py` — Blocked File Manifest
 
@@ -285,6 +301,7 @@ extension, and reason string.
 | `elevate()` | Re-launches via `ShellExecuteW("runas")` with **only** `sys.argv[0]` |
 | `sha256(path, chunk) → str` | Streaming SHA-256 in 1 MiB chunks; returns `""` on error |
 | `format_size(b) → str` | `1234567890` → `"1.15 GB"` |
+| `is_file_path(path) → bool` | Robust file-vs-folder detection with filesystem & extension fallback |
 
 ### `theme.py` — Catppuccin Mocha
 

@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Callable
 
 from .constants import INTERNAL_PREFIX
-from .utils import sha256
+from .utils import is_file_path, sha256
 
 __all__ = ["ParallelHashVerifier"]
 
@@ -42,9 +42,32 @@ class ParallelHashVerifier:
     ) -> tuple[int, int, int]:
         """
         Walk *dest*, hash each file, compare against *src*, and discover missing source transfers.
+        Supports verifying individual files or complete directory hierarchies.
         Returns ``(ok, fail, missing_from_dest)`` counts.
         """
         cb = callback or (lambda _m, _t: None)
+
+        if is_file_path(src):
+            src_file = Path(src)
+            cb(f"\n🔑  SHA-256 verify: {src_file.name}\n", "info")
+            if Path(dest).is_dir():
+                dst_file = Path(dest) / src_file.name
+            else:
+                dst_file = Path(dest)
+
+            if not dst_file.exists():
+                cb(f"  ❌  MISSING AT DESTINATION: {src_file.name}\n", "bad")
+                return 0, 0, 1
+
+            h_src = sha256(src_file)
+            h_dst = sha256(dst_file)
+            if h_src and h_dst and h_src == h_dst:
+                cb(f"  OK   {src_file.name}\n", "good")
+                return 1, 0, 0
+            else:
+                cb(f"  FAIL {src_file.name}  (SHA-256 MISMATCH)\n", "bad")
+                return 0, 1, 0
+
         cb(f"\n🔑  SHA-256 verify: {Path(dest).name}\n", "info")
 
         pairs: list[tuple[Path, Path]] = []
